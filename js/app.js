@@ -1076,7 +1076,7 @@
     // Anti-clickjacking: refuse to run inside someone else's frame (the Claude preview is the only allowed host).
     var framed = false;
     try { framed = root.top !== root.self; } catch (e) { framed = true; }
-    if (framed && !(root.claude && typeof root.claude.use === 'function')) {
+    if (framed && root.SR_PREVIEW !== true && !(root.claude && typeof root.claude.use === 'function')) {
       doc.body.replaceChildren(h('main', { class: 'wrap' }, h('section', { class: 'card' }, h('h2', { text: 'Open ShiftRhythm directly' }),
         h('p', { text: 'For your safety, ShiftRhythm doesn\u2019t run inside other websites. Open it in its own tab instead.' }))));
       return;
