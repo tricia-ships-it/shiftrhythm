@@ -266,7 +266,7 @@
     opts = opts || {};
     var now = nowAbsPrecise();
     var cls = 'blk k-' + b.kind + (b.during ? ' during' : '') + (b.done ? ' done' : '') + (b.e <= now && !b.done ? ' past' : '') + (b.s <= now && now < b.e ? ' current' : '');
-    var timeTxt = b.startTime + '–' + b.endTime + (b.endDate !== b.date && b.kind !== 'break' ? ' +1' : '');
+    var timeTxt = b.startTime + '\u2013' + b.endTime + (b.endDate !== b.date && b.kind !== 'break' ? ' +1' : '');
     var sub = [];
     if (b.kind === 'task') {
       if (b.role) sub.push(root.SR.areas.areaName(b.role));
@@ -293,7 +293,7 @@
     }
     var row = h('div', { class: cls },
       h('span', { class: 'time', text: timeTxt }),
-      h('div', {}, h('div', { class: 'title' }, b.kind === 'task' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null, b.kind === 'break' ? 'Break' : b.title, ' ', badges), sub.length ? h('div', { class: 'sub', text: sub.join(' · ') }) : null),
+      h('div', {}, h('div', { class: 'title' }, b.kind === 'task' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null, b.kind === 'break' ? 'Break' : b.title, ' ', badges), sub.length ? h('div', { class: 'sub', text: sub.join(' \u00b7 ') }) : null),
       acts);
     if (b.kind === 'task' || b.kind === 'commit') tint(row, taskColor(b));
     return row;
@@ -313,7 +313,7 @@
       var bar = h('i'); bar.style.width = pct.toFixed(1) + '%';
       nowCard.append(h('div', { class: 'big', text: cur.kind === 'break' ? 'Break time' : cur.title + (cur.part ? ' (' + cur.part + ')' : '') }),
         h('div', { class: 'bar' }, bar),
-        h('div', { class: 'muted', text: cur.startTime + '–' + cur.endTime + ' · ' + dur(cur.e - now) + ' left' }));
+        h('div', { class: 'muted', text: cur.startTime + '\u2013' + cur.endTime + ' \u00b7 ' + dur(cur.e - now) + ' left' }));
     } else nowCard.append(h('div', { class: 'big', text: 'Free time' }));
     if (next) {
       nowCard.append(h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Next:' }), h('strong', { text: next.kind === 'break' ? 'Break' : next.title }),
@@ -332,7 +332,7 @@
       : kind === 'day' ? (shiftsMode() ? 'Day shift. You\u2019ve got this.' : workLabel() + ' day. One step at a time.')
       : total ? (mode() === 'free' ? 'Your day, your plan.' : 'A free day, made for your own things.') : 'A free day. Enjoy it.';
     var pills = [h('span', { class: 'pill', text: dayTypeLabel(day0.type || 'off', kind) })];
-    if (shiftB) pills.push(h('span', { class: 'pill', text: shiftB.startTime + '–' + shiftB.endTime }));
+    if (shiftB) pills.push(h('span', { class: 'pill', text: shiftB.startTime + '\u2013' + shiftB.endTime }));
     if (day0.wake) pills.push(h('span', { class: 'pill', text: 'Up at ' + day0.wake }));
     var rs = Rw.status(state, plan, t);
     pills.push(h('span', { class: 'pill', text: '\ud83d\udd25 ' + rs.streak + '-day streak' }));
@@ -482,8 +482,8 @@
       if (!items.length) card.append(h('div', { class: 'empty', text: 'Nothing planned' }));
       items.forEach(function (b) {
         card.append(tint(h('div', { class: 'mini k-' + b.kind + (b.during ? ' during' : '') + (b.done ? ' done' : '') },
-          h('span', { class: 't', text: b.startTime + '–' + b.endTime }),
-          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' ⚠' : '') })), b.kind === 'task' || b.kind === 'commit' ? taskColor(b) : 'var(--line)'));
+          h('span', { class: 't', text: b.startTime + '\u2013' + b.endTime }),
+          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' \u26a0' : '') })), b.kind === 'task' || b.kind === 'commit' ? taskColor(b) : 'var(--line)'));
       });
       card.append(h('div', { class: 'muted small', text: dur(d.taskMinutes) + ' of tasks' }));
       grid.append(card);
@@ -500,7 +500,7 @@
   function describeTask(t, oneoff) {
     var bits = [dur(t.durationMin)];
     if (t.role) bits.unshift(root.SR.areas.areaName(t.role));
-    if (!oneoff) bits.unshift(t.times + '× per ' + t.per);
+    if (!oneoff) bits.unshift(t.times + '\u00d7 per ' + t.per);
     if (oneoff && t.date) bits.push('on ' + dayLabel(t.date));
     if (oneoff && t.due) bits.push('due ' + dayLabel(t.due));
     if (mode() !== 'free' || t.when !== 'outside') bits.push(t.when === 'during' ? 'during ' + workWord() : t.when === 'either' ? 'during or outside ' + workWord() : 'outside ' + workWord());
@@ -518,7 +518,7 @@
     else if (t.timeOfDay !== 'any') bits.push('prefers ' + t.timeOfDay);
     if (t.keepWhole) bits.push('one block');
     if (t.priority === 1) bits.push('high priority');
-    return bits.join(' · ');
+    return bits.join(' \u00b7 ');
   }
   function renderTasks() {
     var rec = h('div', {});
@@ -638,7 +638,7 @@
         h('label', { class: 'field' }, h('span', {}, 'Best time of day'), f.tod),
         h('label', { class: 'field' }, h('span', {}, 'Fixed start time (optional)'), f.fixed),
         h('label', { class: 'field' }, h('span', {}, 'Priority'), f.prio)),
-      h('label', { class: 'check' }, f.whole, 'Keep it in one block (don’t split it into focus sessions), e.g. workouts, rehearsals, meetings'),
+      h('label', { class: 'check' }, f.whole, 'Keep it in one block (don\u2019t split it into focus sessions), e.g. workouts, rehearsals, meetings'),
       err,
       h('div', { class: 'spread' },
         isNew ? h('span') : confirmBtn,
@@ -668,7 +668,7 @@
     var box = h('div', { class: 'pattern', 'aria-label': 'Rotation pattern' });
     if (!ui.pattern.length) box.append(h('span', { class: 'muted small', text: 'Tap Day, Night or Off to build one full cycle of your rotation.' }));
     ui.pattern.forEach(function (p, i) {
-      box.append(h('button', { class: 'chip ' + p, type: 'button', title: 'Remove', onclick: function () { ui.pattern.splice(i, 1); render(); } }, SHORT[p] + ' ×'));
+      box.append(h('button', { class: 'chip ' + p, type: 'button', title: 'Remove', onclick: function () { ui.pattern.splice(i, 1); render(); } }, SHORT[p] + ' \u00d7'));
     });
     var start = h('input', { type: 'date', id: 'patStart', value: ui.patternStart, onchange: function () { ui.patternStart = start.value; } });
     var weeks = h('select', { id: 'patWeeks', onchange: function () { ui.patternWeeks = Number(weeks.value); } },
@@ -715,7 +715,7 @@
       h('section', { class: 'card', 'aria-labelledby': 'calH' },
         h('div', { class: 'spread' },
           h('h2', { id: 'calH', text: dayLabel(first, { month: 'long', year: 'numeric' }) }),
-          h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(-1); } }, '‹ Prev'), h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(1); } }, 'Next ›'))),
+          h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(-1); } }, '\u2039 Prev'), h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(1); } }, 'Next \u203a'))),
         h('p', { class: 'small muted', text: shiftsMode() ? 'Tap a day to switch Off \u2192 Day \u2192 Night.' : 'Tap a day to switch between ' + workLabel().toLowerCase() + ' and a day off: holidays, leave, an extra day.' }),
         cal),
       h('div', { class: 'stack' },
@@ -745,7 +745,7 @@
       h('h2', { id: 'lifeH', text: 'Your life' }),
       h('h3', { text: 'What\u2019s part of your life?' }), root.SR.areas.renderPersonaPicker(),
       h('h3', { text: 'Your main schedule' }), renderModePicker(),
-      h('h3', { text: 'Your areas' }), root.SR.areas.renderAreas());
+      h('h3', { id: 'areasH', text: 'Your areas' }), root.SR.areas.renderAreas());
   }
   var MODES = [
     ['shifts', 'I work shifts', 'Rotating day and night shifts, a new roster each month.'],
@@ -1048,7 +1048,7 @@
           Al.permission() === 'default' ? h('button', { class: 'btn', type: 'button', onclick: function () { Al.askPermission().then(render); } }, 'Allow notifications') : h('span', { class: 'small muted', text: 'Notifications: ' + Al.permission() })),
         nav(true, 'Show my plan', function () { Al.unlock(); change(function () { state.setupDone = true; }); root.location.hash = '#today'; })];
     }
-    return h('section', { class: 'card', 'aria-label': 'Setup, step ' + (s + 1) + ' of ' + steps.length }, bar, h('h3', { text: 'Step ' + (s + 1) + ' of ' + steps.length + ' · ' + steps[s] }), body);
+    return h('section', { class: 'card', 'aria-label': 'Setup, step ' + (s + 1) + ' of ' + steps.length }, bar, h('h3', { text: 'Step ' + (s + 1) + ' of ' + steps.length + ' \u00b7 ' + steps[s] }), body);
   }
 
   // ---------- alarm loop ----------
@@ -1063,10 +1063,10 @@
   }
   var TUNE = { task: 'focus', break: 'break', commute: 'travel', prep: 'focus', nap: 'sleep', sleep: 'sleep', commit: 'focus' };
   function alarmText(b) {
-    if (b.kind === 'task') return { title: 'Time for: ' + b.title + (b.part ? ' (' + b.part + ')' : ''), body: b.startTime + '–' + b.endTime + ' · ' + dur(b.minutes) + ' focus' };
+    if (b.kind === 'task') return { title: 'Time for: ' + b.title + (b.part ? ' (' + b.part + ')' : ''), body: b.startTime + '\u2013' + b.endTime + ' \u00b7 ' + dur(b.minutes) + ' focus' };
     if (b.kind === 'commit') return { title: 'Time for: ' + b.title, body: b.startTime + '\u2013' + b.endTime };
     if (b.kind === 'break') return { title: 'Break time', body: 'Step away for ' + dur(b.minutes) + '. Stretch, drink some water.' };
-    if (b.kind === 'commute') return { title: b.title, body: 'Leave now · ' + b.startTime };
+    if (b.kind === 'commute') return { title: b.title, body: 'Leave now \u00b7 ' + b.startTime };
     if (b.kind === 'prep') return { title: 'Time to get up and get ready', body: 'Leave at ' + b.endTime + '.' };
     if (b.kind === 'nap') return { title: 'Nap time', body: 'Rest before your night shift until ' + b.endTime + '.' };
     return { title: 'Wind down for sleep', body: 'Sleep until ' + b.endTime + '.' };
@@ -1084,7 +1084,7 @@
       h('div', { class: 'big', id: 'alT', text: txt.title }), h('div', { text: txt.body }),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', type: 'button', onclick: closeAlarm }, 'Got it'),
-        h('button', { class: 'btn', type: 'button', onclick: function () { closeAlarm(); setTimeout(function () { ring(b, false); }, 5 * 60000); toast('I’ll remind you again in 5 minutes.'); } }, 'Snooze 5 min')));
+        h('button', { class: 'btn', type: 'button', onclick: function () { closeAlarm(); setTimeout(function () { ring(b, false); }, 5 * 60000); toast('I\u2019ll remind you again in 5 minutes.'); } }, 'Snooze 5 min')));
     if (b.kind === 'task') tint(box, taskColor(b));
     doc.body.append(box);
     var again = 0;

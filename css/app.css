@@ -361,3 +361,4 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; 
 .suggest .idea:hover:not(:disabled) { border-color: var(--accent); }
 .suggest .idea.on { border-color: color-mix(in srgb, var(--ok, #16a34a) 50%, transparent); background: color-mix(in srgb, var(--ok, #16a34a) 10%, var(--surface)); cursor: default; }
 .suggest .strong { font-weight: 700; margin-top: 4px; }
+#areasH, #lifeH { scroll-margin-top: 84px; }

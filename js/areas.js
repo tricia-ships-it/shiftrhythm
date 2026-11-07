@@ -14,7 +14,7 @@
   var PERSONAS = [
     { id: 'shift', icon: '\ud83d\udd04', label: 'Shift work', main: 'shifts' },
     { id: 'fulltime', icon: '\ud83d\udcbc', label: 'Full-time job', main: 'regular', role: { type: 'fixed', name: 'Work', days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', commuteMin: 30 } },
-    { id: 'parttime', icon: '⏰', label: 'Part-time job', role: { type: 'fixed', name: 'Part-time job', days: [2, 4], start: '10:00', end: '14:00', commuteMin: 30 } },
+    { id: 'parttime', icon: '\u23f0', label: 'Part-time job', role: { type: 'fixed', name: 'Part-time job', days: [2, 4], start: '10:00', end: '14:00', commuteMin: 30 } },
     { id: 'student', icon: '\ud83c\udf93', label: 'Studies', role: { type: 'fixed', name: 'Classes', days: [1, 3, 5], start: '09:00', end: '12:00', commuteMin: 30 }, also: { type: 'flexible', name: 'Study', weeklyHours: 6, session: 60 }, words: 'class lecture assignment exam study revise coursework tutorial' },
     { id: 'freelance', icon: '\ud83d\udcbb', label: 'Freelance or self-employed', role: { type: 'flexible', name: 'Freelance work', weeklyHours: 8, session: 90 }, words: 'client freelance invoice proposal contract' },
     { id: 'org', icon: '\ud83c\udf0d', label: 'Running an organisation or business', role: { type: 'flexible', name: 'My organisation', weeklyHours: 6, session: 90 }, words: 'ngo business team partners donors' },
@@ -195,8 +195,8 @@
   function renderPersonaPicker() {
     var set = S().settings.personas || [];
     return h('div', { class: 'stack' },
-      h('p', { class: 'small muted', text: 'Pick everything that’s part of your life right now. Each becomes an area with its own colour, and you can rename or change any of it.' }),
-      h('div', { class: 'persona-grid', role: 'group', 'aria-label': 'What’s part of your life' }, PERSONAS.map(function (p) {
+      h('p', { class: 'small muted', text: 'Pick everything that\u2019s part of your life right now. Each becomes an area with its own colour, and you can rename or change any of it.' }),
+      h('div', { class: 'persona-grid', role: 'group', 'aria-label': 'What\u2019s part of your life' }, PERSONAS.map(function (p) {
         var on = set.indexOf(p.id) >= 0;
         return h('button', { type: 'button', class: 'persona' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick: function () { togglePersona(p); } },
           h('span', { class: 'pi', 'aria-hidden': 'true', text: p.icon }), h('span', { text: p.label }));
@@ -229,7 +229,7 @@
       card.append(h('div', { class: 'fields' },
         h('label', { class: 'field' }, h('span', {}, 'Hours a week'), h('input', { type: 'number', min: '0', max: '80', step: '0.5', value: String(r.weeklyHours || 0), onchange: function (e) { var v = Math.max(0, Math.min(80, Number(e.target.value) || 0)); edit(r, function (x) { x.weeklyHours = v; }, 'Saved. Plan recalculated.'); } })),
         h('label', { class: 'field' }, h('span', {}, 'Per sitting (min)'), h('input', { type: 'number', min: '30', max: '240', step: '15', value: String(r.session || 90), onchange: function (e) { var v = Math.max(30, Math.min(240, Number(e.target.value) || 90)); edit(r, function (x) { x.session = v; }); } }))),
-        h('p', { class: 'small muted', text: r.weeklyHours ? 'Tasks you add to this area count towards the ' + r.weeklyHours + ' h; ShiftRhythm adds general “' + r.name + ' time” for the rest.' : 'No weekly target: this area just groups its tasks and one-off bookings, like gigs.' }));
+        h('p', { class: 'small muted', text: r.weeklyHours ? 'Tasks you add to this area count towards the ' + r.weeklyHours + ' h; ShiftRhythm adds general \u201c' + r.name + ' time\u201d for the rest.' : 'No weekly target: this area just groups its tasks and one-off bookings, like gigs.' }));
     }
     var rules = [['off', shifts ? 'Normal off days' : 'Days off'], ['day', shifts ? 'Day shifts' : mainName() + ' days'], ['night', 'Night shifts']]
       .filter(function (x) { return shifts || x[0] === 'off' || ((S().settings.mode || '') === 'regular' && x[0] === 'day'); });
@@ -250,7 +250,7 @@
   function renderAreas() {
     var box = h('div', { class: 'stack' });
     var list = S().roles || [];
-    if (!list.length) box.append(h('p', { class: 'empty', text: 'No areas yet. Pick what’s part of your life above, or add one.' }));
+    if (!list.length) box.append(h('p', { class: 'empty', text: 'No areas yet. Pick what\u2019s part of your life above, or add one.' }));
     list.forEach(function (r) { box.append(renderAreaCard(r)); });
     box.append(h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: function () { A().change(function () { S().roles.push(newRole({ type: 'flexible', name: 'New area', weeklyHours: 2, session: 60 })); }); } }, '+ Area with hours a week'),
@@ -258,6 +258,16 @@
     return box;
   }
 
+  // Jump to Settings \u2192 Your life, where areas and their weekly hours are set.
+  function editAreasBtn(label) {
+    return h('button', { class: 'btn small', type: 'button', onclick: function () {
+      if (root.location.hash !== '#settings') root.location.hash = '#settings';
+      setTimeout(function () {
+        var el = document.getElementById('areasH') || document.getElementById('lifeH');
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.setAttribute('tabindex', '-1'); el.focus({ preventScroll: true }); }
+      }, 60);
+    } }, label || 'Edit areas');
+  }
   // Hours by area for the calendar week that contains today.
   function renderHours(plan) {
     var t = A().todayIso(), ws = Sch.weekStart(t, S().settings.weekStartsOn), we = Sch.addDays(ws, 6);
@@ -283,7 +293,9 @@
       if (a != null && b != null) add(L.role || '', Math.max(5, b - a));
     });
     roles().forEach(function (r) { if (r.weeklyHours && !(r.id in sums)) add(r.id, 0); });
-    if (!order.length) return null;
+    if (!order.length || !(S().roles || []).length) return h('section', { class: 'card', 'aria-labelledby': 'hoursH' },
+      h('div', { class: 'spread' }, h('h2', { id: 'hoursH', text: 'Hours by area' }), editAreasBtn('Set up areas')),
+      h('p', { class: 'small muted', text: 'Split your week into the areas of your life, such as a job, studies, an organisation you run or choir, and give each one fixed times or a target of hours a week. You\u2019ll see here how your time is shared between them.' }));
     var max = Math.max.apply(null, order.map(function (id) { var r = role(id); return Math.max(sums[id], r && r.weeklyHours ? r.weeklyHours * 60 : 0); })) || 1;
     order.sort(function (a, b) { return sums[b] - sums[a]; });
     var rows = order.map(function (id) {
@@ -295,9 +307,9 @@
         h('span', { class: 'hval mono', text: A().dur(sums[id]) + (target ? ' / ' + A().dur(target) : '') }));
     });
     return h('section', { class: 'card', 'aria-labelledby': 'hoursH' },
-      h('div', { class: 'spread' }, h('h2', { id: 'hoursH', text: 'Hours by area this week' }), h('span', { class: 'small muted', text: A().dayLabel(ws) + ' – ' + A().dayLabel(we) })),
+      h('div', { class: 'spread' }, h('h2', { id: 'hoursH', text: 'Hours by area this week' }), h('div', { class: 'row' }, h('span', { class: 'small muted', text: A().dayLabel(ws) + ' \u2013 ' + A().dayLabel(we) }), editAreasBtn())),
       h('div', { class: 'hours' }, rows),
-      h('p', { class: 'small muted', text: 'Planned and done, including your ' + ((S().settings.mode || 'shifts') === 'shifts' ? 'shifts' : 'fixed commitments') + '. The line marks each area’s weekly target.' }));
+      h('p', { class: 'small muted', text: 'Planned and done, including your ' + ((S().settings.mode || 'shifts') === 'shifts' ? 'shifts' : 'fixed commitments') + '. The line marks each area\u2019s weekly target. Change targets, fixed times or add areas with Edit areas.' }));
   }
 
   root.SR = root.SR || {};

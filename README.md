@@ -100,7 +100,7 @@ The welcome screen walks you through it in about three minutes:
   - **Start work now** — when you're at work before your shift starts; work tasks can begin straight away.
   - **Shift ends or ended at…** — finishing early or staying late moves your travel home and your evening.
   - **Undo changes** puts the day back to the original plan.
-- **Week** shows the whole week day by day, plus **hours by area** against each area's target.
+- **Week** shows the whole week day by day, plus **hours by area** against each area's target. Tap **Edit areas** there to change targets or fixed times, or add an area.
 - Check the **briefing** at the top of Today each morning: your shift, when to leave, what's left, how each project is going.
 
 ### Step 4. Add things as they come up
