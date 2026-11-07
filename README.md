@@ -88,12 +88,18 @@ The welcome screen walks you through it in about three minutes:
    You can pause an area at any time without deleting it.
 4. **Your shifts or work hours.** Enter your start and end times, travel time and getting-ready time. For shifts, set up your rotation pattern, or import this month's roster (Step 5).
 5. **Sleep and focus.** Set your wake times, bedtime, rest after a night shift and your focus rhythm (for example 30 min focus, 15 min break).
-6. **Tasks.** Start from the examples or add your own. Then turn on alarms.
+6. **Tasks.** ShiftRhythm suggests activities for the life you picked (for a student: reviewing lecture notes, assignments, revision; for freelancers: invoicing and pitching…). Tap the ones you want, or **Add all**, then edit them or add your own. Then turn on alarms.
 
 ### Step 3. Use it every day
 
 - **Today** shows what's happening now, a countdown to the next thing, your progress ring and your streak. Tap **Done** as you finish each block. When a chime rings, it's time to switch.
 - On a fixed-area block, tap **Not this time** to skip it just this once; the rest of the day is replanned.
+- **Day not going to plan?** Use the card on Today to say what's actually happening, and the rest of the day is rearranged into the time left:
+  - **Resting now, until…** — for example you got home late after a night shift and only fell asleep at 15:00. It suggests the same length of rest you'd planned.
+  - **Busy or running late, until…** — traffic, a long meeting, anything that eats into your plan.
+  - **Start work now** — when you're at work before your shift starts; work tasks can begin straight away.
+  - **Shift ends or ended at…** — finishing early or staying late moves your travel home and your evening.
+  - **Undo changes** puts the day back to the original plan.
 - **Week** shows the whole week day by day, plus **hours by area** against each area's target.
 - Check the **briefing** at the top of Today each morning: your shift, when to leave, what's left, how each project is going.
 

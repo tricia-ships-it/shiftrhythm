@@ -12,19 +12,88 @@
   function S() { return A().state(); }
 
   var PERSONAS = [
-    { id: 'shift', icon: '🔄', label: 'Shift work', main: 'shifts' },
-    { id: 'fulltime', icon: '💼', label: 'Full-time job', main: 'regular', role: { type: 'fixed', name: 'Work', days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', commuteMin: 30 } },
+    { id: 'shift', icon: '\ud83d\udd04', label: 'Shift work', main: 'shifts' },
+    { id: 'fulltime', icon: '\ud83d\udcbc', label: 'Full-time job', main: 'regular', role: { type: 'fixed', name: 'Work', days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00', commuteMin: 30 } },
     { id: 'parttime', icon: '⏰', label: 'Part-time job', role: { type: 'fixed', name: 'Part-time job', days: [2, 4], start: '10:00', end: '14:00', commuteMin: 30 } },
-    { id: 'student', icon: '🎓', label: 'Studies', role: { type: 'fixed', name: 'Classes', days: [1, 3, 5], start: '09:00', end: '12:00', commuteMin: 30 }, also: { type: 'flexible', name: 'Study', weeklyHours: 6, session: 60 }, words: 'class lecture assignment exam study revise coursework tutorial' },
-    { id: 'freelance', icon: '💻', label: 'Freelance or self-employed', role: { type: 'flexible', name: 'Freelance work', weeklyHours: 8, session: 90 }, words: 'client freelance invoice proposal contract' },
-    { id: 'org', icon: '🌍', label: 'Running an organisation or business', role: { type: 'flexible', name: 'My organisation', weeklyHours: 6, session: 90 }, words: 'ngo business team partners donors' },
-    { id: 'community', icon: '🤝', label: 'Community or volunteer role', role: { type: 'flexible', name: 'Community role', weeklyHours: 3, session: 60 }, words: 'community volunteer meetup chapter members' },
-    { id: 'creative', icon: '🎭', label: 'Creative work or gigs', role: { type: 'flexible', name: 'Creative work', weeklyHours: 3, session: 60 }, words: 'gig acting audition casting shoot perform performance set' },
-    { id: 'faith', icon: '🎶', label: 'Choir, church or faith group', role: { type: 'fixed', name: 'Choir rehearsal', days: [6], start: '16:00', end: '18:00', commuteMin: 30 }, words: 'choir church rehearsal mass service fellowship' },
-    { id: 'family', icon: '🏡', label: 'Family and caregiving', role: { type: 'flexible', name: 'Family time', weeklyHours: 5, session: 60 }, words: 'family kids children mum mom dad parents' },
-    { id: 'jobhunt', icon: '🔎', label: 'Looking for work', role: { type: 'flexible', name: 'Job search', weeklyHours: 8, session: 60 }, words: 'job application cv resume interview' },
-    { id: 'retired', icon: '🌿', label: 'Retired or taking time out', main: 'free' }
+    { id: 'student', icon: '\ud83c\udf93', label: 'Studies', role: { type: 'fixed', name: 'Classes', days: [1, 3, 5], start: '09:00', end: '12:00', commuteMin: 30 }, also: { type: 'flexible', name: 'Study', weeklyHours: 6, session: 60 }, words: 'class lecture assignment exam study revise coursework tutorial' },
+    { id: 'freelance', icon: '\ud83d\udcbb', label: 'Freelance or self-employed', role: { type: 'flexible', name: 'Freelance work', weeklyHours: 8, session: 90 }, words: 'client freelance invoice proposal contract' },
+    { id: 'org', icon: '\ud83c\udf0d', label: 'Running an organisation or business', role: { type: 'flexible', name: 'My organisation', weeklyHours: 6, session: 90 }, words: 'ngo business team partners donors' },
+    { id: 'community', icon: '\ud83e\udd1d', label: 'Community or volunteer role', role: { type: 'flexible', name: 'Community role', weeklyHours: 3, session: 60 }, words: 'community volunteer meetup chapter members' },
+    { id: 'creative', icon: '\ud83c\udfad', label: 'Creative work or gigs', role: { type: 'flexible', name: 'Creative work', weeklyHours: 3, session: 60 }, words: 'gig acting audition casting shoot perform performance set' },
+    { id: 'faith', icon: '\ud83c\udfb6', label: 'Choir, church or faith group', role: { type: 'fixed', name: 'Choir rehearsal', days: [6], start: '16:00', end: '18:00', commuteMin: 30 }, words: 'choir church rehearsal mass service fellowship' },
+    { id: 'family', icon: '\ud83c\udfe1', label: 'Family and caregiving', role: { type: 'flexible', name: 'Family time', weeklyHours: 5, session: 60 }, words: 'family kids children mum mom dad parents' },
+    { id: 'jobhunt', icon: '\ud83d\udd0e', label: 'Looking for work', role: { type: 'flexible', name: 'Job search', weeklyHours: 8, session: 60 }, words: 'job application cv resume interview' },
+    { id: 'retired', icon: '\ud83c\udf3f', label: 'Retired or taking time out', main: 'free' }
   ];
+  // Suggested activities for each kind of life. Tap one to add it as a recurring task in that area.
+  var IDEAS = {
+    everyone: [
+      { title: 'Workout', durationMin: 45, per: 'week', times: 3, keepWhole: true, timeOfDay: 'morning' },
+      { title: 'Read a book', durationMin: 20, per: 'day', times: 1, timeOfDay: 'evening' },
+      { title: 'Tidy up', durationMin: 20, per: 'day', times: 1 },
+      { title: 'Weekly review and planning', durationMin: 30, per: 'week', times: 1, priority: 1 }
+    ],
+    shift: [
+      { title: 'Prep meals for the shift week', durationMin: 60, per: 'week', times: 1, allow: { off: 'yes', day: 'no', night: 'no' } },
+      { title: 'Check the roster and plan the week', durationMin: 20, per: 'week', times: 1, priority: 1, allow: { off: 'yes', day: 'no', night: 'no' } },
+      { title: 'Stretch and wind down', durationMin: 15, per: 'day', times: 1, timeOfDay: 'evening' }
+    ],
+    fulltime: [
+      { title: 'Plan tomorrow\u2019s top 3', durationMin: 10, per: 'week', times: 5, timeOfDay: 'evening' },
+      { title: 'Clear inbox and messages', durationMin: 30, per: 'week', times: 5, when: 'during', role: 'main' },
+      { title: 'Learn a new skill for work', durationMin: 45, per: 'week', times: 2 }
+    ],
+    parttime: [
+      { title: 'Log hours and pay', durationMin: 15, per: 'week', times: 1 },
+      { title: 'Prepare for the next shift', durationMin: 20, per: 'week', times: 1, area: true }
+    ],
+    student: [
+      { title: 'Review today\u2019s lecture notes', durationMin: 30, per: 'week', times: 4, area: true },
+      { title: 'Work on assignments', durationMin: 90, per: 'week', times: 2, area: true },
+      { title: 'Revise an earlier topic', durationMin: 60, per: 'week', times: 1, area: true },
+      { title: 'Read ahead for the next class', durationMin: 30, per: 'week', times: 2, area: true }
+    ],
+    freelance: [
+      { title: 'Send invoices and follow up payments', durationMin: 30, per: 'week', times: 1, priority: 1, area: true },
+      { title: 'Pitch new clients', durationMin: 45, per: 'week', times: 1, area: true },
+      { title: 'Update portfolio', durationMin: 60, per: 'month', times: 1, area: true }
+    ],
+    org: [
+      { title: 'Team check-in', durationMin: 30, per: 'week', times: 1, area: true },
+      { title: 'Post on social media', durationMin: 30, per: 'week', times: 2, area: true },
+      { title: 'Partnership and funding outreach', durationMin: 45, per: 'week', times: 1, area: true },
+      { title: 'Finances and records', durationMin: 60, per: 'month', times: 1, area: true }
+    ],
+    community: [
+      { title: 'Plan the next meetup', durationMin: 60, per: 'month', times: 2, area: true },
+      { title: 'Reply to members', durationMin: 20, per: 'week', times: 2, area: true }
+    ],
+    creative: [
+      { title: 'Practise your craft', durationMin: 30, per: 'week', times: 3, area: true },
+      { title: 'Look for auditions and gigs', durationMin: 30, per: 'week', times: 1, area: true },
+      { title: 'Update showreel or portfolio', durationMin: 60, per: 'month', times: 1, area: true }
+    ],
+    faith: [
+      { title: 'Practise songs for rehearsal', durationMin: 15, per: 'week', times: 3, area: true },
+      { title: 'Quiet time or prayer', durationMin: 15, per: 'day', times: 1, timeOfDay: 'wake', area: true }
+    ],
+    family: [
+      { title: 'Call family', durationMin: 20, per: 'week', times: 2, timeOfDay: 'evening', area: true },
+      { title: 'Family meal together', durationMin: 60, per: 'week', times: 2, timeOfDay: 'evening', keepWhole: true, area: true },
+      { title: 'Plan a family outing', durationMin: 30, per: 'month', times: 1, area: true }
+    ],
+    jobhunt: [
+      { title: 'Apply for jobs', durationMin: 60, per: 'week', times: 4, area: true },
+      { title: 'Update CV and LinkedIn', durationMin: 45, per: 'week', times: 1, area: true },
+      { title: 'Practise for interviews', durationMin: 30, per: 'week', times: 2, area: true },
+      { title: 'Reach out to your network', durationMin: 20, per: 'week', times: 3, area: true }
+    ],
+    retired: [
+      { title: 'Walk outdoors', durationMin: 30, per: 'day', times: 1, timeOfDay: 'morning' },
+      { title: 'Hobby time', durationMin: 60, per: 'week', times: 3 },
+      { title: 'Call a friend', durationMin: 20, per: 'week', times: 2 }
+    ]
+  };
   var GENERIC = { time: 1, work: 1, role: 1, group: 1, job: 1, the: 1, and: 1, for: 1, with: 1, my: 1, part: 1, full: 1 };
 
   function roles() { return (S().roles || []).filter(function (r) { return r.active !== false; }); }
@@ -83,6 +152,44 @@
         if (p.main === 'shifts' || p.main === 'regular') st.settings.mode = set.indexOf('shift') >= 0 ? 'shifts' : set.indexOf('fulltime') >= 0 ? 'regular' : 'free';
       }
     });
+  }
+
+  function hasTask(title) { return (S().recurring || []).some(function (r) { return r.title.toLowerCase() === title.toLowerCase(); }); }
+  function areaFor(pid) {
+    var mine = (S().roles || []).filter(function (r) { return r.persona === pid; });
+    return (mine.filter(function (r) { return r.type === 'flexible'; })[0] || mine[0] || {}).id || '';
+  }
+  function ideaTask(pid, idea) {
+    var t = JSON.parse(JSON.stringify(idea));
+    t.role = idea.role === 'main' ? 'main' : idea.area ? areaFor(pid) : '';
+    delete t.area;
+    return St.cleanTask(Object.assign({ id: St.uid() }, t), false);
+  }
+  function suggestionGroups() {
+    var set = S().settings.personas || [], free = (S().settings.mode || 'shifts') === 'free';
+    return set.concat(['everyone']).filter(function (pid) { return IDEAS[pid]; }).map(function (pid) {
+      var p = PERSONAS.filter(function (x) { return x.id === pid; })[0];
+      return { id: pid, label: p ? p.icon + ' ' + p.label : '\u2728 For everyone', ideas: IDEAS[pid].filter(function (i) { return !(i.when === 'during' && free); }) };
+    });
+  }
+  function renderSuggestions() {
+    var groups = suggestionGroups(), left = 0;
+    var box = h('div', { class: 'stack suggest' });
+    groups.forEach(function (g) {
+      box.append(h('div', { class: 'small strong', text: g.label }), h('div', { class: 'chips' }, g.ideas.map(function (i) {
+        var have = hasTask(i.title);
+        if (!have) left++;
+        var desc = i.durationMin + ' min, ' + (i.per === 'day' ? 'daily' : i.times + '\u00d7 a ' + i.per);
+        return h('button', { type: 'button', class: 'idea' + (have ? ' on' : ''), 'aria-pressed': String(have), disabled: have,
+          onclick: function () { A().change(function () { S().recurring.push(ideaTask(g.id, i)); }, i.title + ' added. Edit it under Tasks.'); } },
+          h('span', { text: (have ? '\u2713 ' : '+ ') + i.title }), h('span', { class: 'muted', text: desc }));
+      })));
+    });
+    if (left > 1) box.prepend(h('div', { class: 'row' }, h('button', { class: 'btn primary small', type: 'button', onclick: function () {
+      A().change(function () { groups.forEach(function (g) { g.ideas.forEach(function (i) { if (!hasTask(i.title)) S().recurring.push(ideaTask(g.id, i)); }); }); }, 'Suggestions added. Edit or pause any of them.');
+    } }, 'Add all ' + left + ' suggestions')));
+    return h('div', { class: 'stack' },
+      h('p', { class: 'small muted', text: 'Ideas for the life you picked. Tap to add; every one can be edited, moved to other days or paused.' }), box);
   }
 
   function renderPersonaPicker() {
@@ -194,5 +301,5 @@
   }
 
   root.SR = root.SR || {};
-  root.SR.areas = { PERSONAS: PERSONAS, renderPersonaPicker: renderPersonaPicker, renderAreas: renderAreas, renderHours: renderHours, areaName: areaName, areaColor: areaColor, areaOptions: areaOptions, detect: detect, role: role, roles: roles };
+  root.SR.areas = { PERSONAS: PERSONAS, renderPersonaPicker: renderPersonaPicker, renderSuggestions: renderSuggestions, IDEAS: IDEAS, renderAreas: renderAreas, renderHours: renderHours, areaName: areaName, areaColor: areaColor, areaOptions: areaOptions, detect: detect, role: role, roles: roles };
 })(this);

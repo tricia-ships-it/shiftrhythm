@@ -17,7 +17,8 @@
       recurring: [],
       oneoffs: [],
       roles: [],
-      log: {}
+      log: {},
+      adjust: {}
     };
   }
 
@@ -140,6 +141,26 @@
     Object.keys(raw.shifts || {}).forEach(function (d) {
       if (ISO.test(d) && ['day', 'night', 'off'].indexOf(raw.shifts[d]) >= 0) s.shifts[d] = raw.shifts[d];
     });
+    // One-day changes: actual rest, busy time, work started early or finished late (minutes from that midnight).
+    function mn(v) { return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 2880 ? Math.round(v) : null; }
+    Object.keys(raw.adjust || {}).slice(-60).forEach(function (d) {
+      var a = raw.adjust[d];
+      if (!ISO.test(d) || !a || typeof a !== 'object') return;
+      var o = {}, any = false;
+      if (Array.isArray(a.rest) && mn(a.rest[0]) != null && mn(a.rest[1]) != null && a.rest[1] > a.rest[0]) { o.rest = [mn(a.rest[0]), mn(a.rest[1])]; any = true; }
+      if (Array.isArray(a.busy)) {
+        o.busy = a.busy.filter(function (x) { return Array.isArray(x) && mn(x[0]) != null && mn(x[1]) != null && x[1] > x[0]; })
+          .slice(0, 10).map(function (x) { return [mn(x[0]), mn(x[1]), str(x[2], 60)]; });
+        if (o.busy.length) any = true; else delete o.busy;
+      }
+      if (a.shift && typeof a.shift === 'object') {
+        var sh = {};
+        if (mn(a.shift.start) != null) sh.start = mn(a.shift.start);
+        if (mn(a.shift.end) != null) sh.end = mn(a.shift.end);
+        if (sh.start != null || sh.end != null) { o.shift = sh; any = true; }
+      }
+      if (any) s.adjust[d] = o;
+    });
     s.roles = (Array.isArray(raw.roles) ? raw.roles : []).map(cleanRole).filter(Boolean).slice(0, 24);
     st.personas = Array.isArray(r.personas) ? r.personas.filter(function (x) { return typeof x === 'string' && /^[a-z]{2,12}$/.test(x); }).slice(0, 20) : [];
     s.recurring = (Array.isArray(raw.recurring) ? raw.recurring : []).map(function (t) { return cleanTask(t, false); }).filter(Boolean).slice(0, 300);
@@ -175,6 +196,9 @@
     Object.keys(state.log).forEach(function (k) { if (state.log[k].date && state.log[k].date < cutoff) delete state.log[k]; });
     state.oneoffs = state.oneoffs.filter(function (o) { return !(o.done && (o.date || o.due || today) < cutoff); });
     Object.keys(state.shifts).forEach(function (d) { if (d < cutoff) delete state.shifts[d]; });
+    var adjCut = root.SR.scheduler.addDays(today, -3);
+    state.adjust = state.adjust || {};
+    Object.keys(state.adjust).forEach(function (d) { if (d < adjCut) delete state.adjust[d]; });
   }
 
   // ---- backups ----

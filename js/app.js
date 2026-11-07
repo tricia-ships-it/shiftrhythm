@@ -354,10 +354,75 @@
         h('span', { class: 'muted small', text: doneN + ' of ' + todayTasks.length + ' task blocks done' })),
       list);
 
-    var side = h('div', { class: 'stack' }, nowCard, renderStreakCard(rs), root.SR.capture.renderBriefing(), renderUnplaced(),
-      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, 'Recalculate')));
+    var side = h('div', { class: 'stack' }, nowCard, renderDrift(), renderStreakCard(rs), root.SR.capture.renderBriefing(), renderUnplaced());
     return h('div', { class: 'stack' }, hero, quick, h('div', { class: 'grid2' }, timeline, side));
   }
+  // ---------- the day drifted: say what actually happened, the rest of the day is replanned ----------
+  function round5(m) { return Math.ceil(m / 5) * 5; }
+  function adjFor(d) { state.adjust = state.adjust || {}; return state.adjust[d] || (state.adjust[d] = {}); }
+  function untilMin(v) { var m = Sch.hm(v), nm = nowMin(); if (m == null) return null; if (m < nm - 30) m += Sch.DAY; return m > nm ? m : null; }
+  function renderDrift() {
+    var t = todayIso(), nm = nowMin(), now = nowAbsPrecise();
+    // Default rest length: what was planned for the sleep you're late for, otherwise 90 minutes.
+    var planned = plan.blocks.filter(function (b) { return (b.kind === 'sleep' || b.kind === 'nap') && !b.adjusted && b.e > now && b.s < now + 180; })[0];
+    var restLen = planned ? Math.min(9 * 60, planned.e - planned.s) : 90;
+    var restIn = h('input', { type: 'time', id: 'drRest', value: Sch.fmt(round5(nm + restLen) % Sch.DAY), 'aria-label': 'Resting until' });
+    var busyIn = h('input', { type: 'time', id: 'drBusy', value: Sch.fmt(round5(nm + 60) % Sch.DAY), 'aria-label': 'Busy until' });
+    function setRest() {
+      var e = untilMin(restIn.value); if (e == null) { toast('Pick a time later than now.'); return; }
+      change(function () { adjFor(t).rest = [nm, e]; }, 'Rest until ' + restIn.value + '. The rest of your day is replanned around it.');
+    }
+    function setBusy() {
+      var e = untilMin(busyIn.value); if (e == null) { toast('Pick a time later than now.'); return; }
+      change(function () { var a = adjFor(t); a.busy = (a.busy || []).concat([[nm, e, 'Busy']]).slice(-10); }, 'Busy until ' + busyIn.value + '. Everything after moves along.');
+    }
+    var rows = [
+      h('div', { class: 'drow' }, h('span', { class: 'dlbl', text: '\ud83d\ude34 Resting now, until' }), restIn, h('button', { class: 'btn small primary', type: 'button', onclick: setRest }, 'Set')),
+      h('div', { class: 'drow' }, h('span', { class: 'dlbl', text: '\u23f3 Busy or running late, until' }), busyIn, h('button', { class: 'btn small primary', type: 'button', onclick: setBusy }, 'Set'))
+    ];
+    // Work: started early, or finished at a different time.
+    var shift = plan.blocks.filter(function (b) { return b.kind === 'shift' && b.e + 180 > now && b.s - 180 < now; })[0];
+    if (shift && mode() !== 'free') {
+      var rel = now - Sch.absFor(plan, shift.date, 0); // now, counted from the shift's own date
+      if (now < shift.s) {
+        rows.push(h('div', { class: 'drow' }, h('span', { class: 'dlbl', text: '\ud83d\udcbc Already at ' + (shiftsMode() ? 'work' : workLabel()) + '?' }),
+          h('button', { class: 'btn small primary', type: 'button', onclick: function () {
+            change(function () { var a = adjFor(shift.date); a.shift = Object.assign({}, a.shift, { start: round5(rel - 4) }); }, 'Started now. Work tasks can begin straight away.');
+          } }, 'Start work now')));
+      } else {
+        var endIn = h('input', { type: 'time', id: 'drEnd', value: now < shift.e ? shift.endTime : Sch.fmt(round5(nm) % Sch.DAY), 'aria-label': 'Finished work at' });
+        rows.push(h('div', { class: 'drow' }, h('span', { class: 'dlbl', text: '\ud83d\udcbc ' + (shiftsMode() ? 'Shift' : workLabel()) + ' ends or ended at' }), endIn,
+          h('button', { class: 'btn small primary', type: 'button', onclick: function () {
+            var m = Sch.hm(endIn.value); if (m == null) return;
+            var d0 = Sch.absFor(plan, shift.date, 0), sMin = shift.s - d0, eMin = shift.e - d0;
+            var em = [m, m + Sch.DAY].filter(function (x) { return x > sMin; }).sort(function (x, y) { return Math.abs(x - eMin) - Math.abs(y - eMin); })[0];
+            if (em == null) { toast('That\u2019s before work started.'); return; }
+            change(function () { var a = adjFor(shift.date); a.shift = Object.assign({}, a.shift, { end: em }); }, 'Work ends at ' + endIn.value + '. Travel and the rest of the day are moved.');
+          } }, 'Set')));
+      }
+    }
+    // What has been changed today, with undo.
+    var notes = [];
+    [Sch.addDays(t, -1), t].forEach(function (d) {
+      var a = state.adjust && state.adjust[d]; if (!a) return;
+      var off = Sch.diffDays(t, d) * Sch.DAY;
+      function tm(m) { return Sch.fmt(((m + off) % Sch.DAY + Sch.DAY) % Sch.DAY); }
+      if (a.rest) notes.push('Rest ' + tm(a.rest[0]) + '\u2013' + tm(a.rest[1]));
+      (a.busy || []).forEach(function (x) { notes.push('Busy ' + tm(x[0]) + '\u2013' + tm(x[1])); });
+      if (a.shift && a.shift.start != null) notes.push('Work from ' + tm(a.shift.start));
+      if (a.shift && a.shift.end != null) notes.push('Work until ' + tm(a.shift.end));
+    });
+    var undoBtn = notes.length ? h('button', { class: 'btn small', type: 'button', onclick: function () {
+      change(function () { [Sch.addDays(t, -1), t].forEach(function (d) { if (state.adjust) delete state.adjust[d]; }); }, 'Back to the original plan.');
+    } }, 'Undo changes') : null;
+    return h('section', { class: 'card drift', 'aria-labelledby': 'drH' },
+      h('h3', { id: 'drH', text: 'Day not going to plan?' }),
+      h('p', { class: 'small muted', text: 'Say what\u2019s actually happening and the rest of today is rearranged to fit the time left.' }),
+      rows,
+      notes.length ? h('p', { class: 'small', text: 'Today: ' + notes.join(' \u00b7 ') }) : null,
+      h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, '\u21bb Recalculate from now'), undoBtn));
+  }
+
   var DOT = { win: ['Counted', '\u2713'], perfect: ['Perfect', '\u2605'], frozen: ['Frozen', '\u2744'], missed: ['Missed', '\u00d7'], rest: ['Rest day', '\u2013'], none: ['Not tracked', ''], today: ['Today', ''] };
   function renderStreakCard(rs) {
     var t = rs.today;
@@ -480,11 +545,10 @@
     return h('div', { class: 'stack' }, root.SR.capture.renderProjects(), h('div', { class: 'grid2' },
       h('section', { class: 'card', 'aria-labelledby': 'recH' },
         h('div', { class: 'spread' }, h('h2', { id: 'recH', text: 'Recurring tasks' }),
-          h('div', { class: 'row' },
-            h('button', { class: 'btn', type: 'button', onclick: addExamples }, 'Add examples'),
-            h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add recurring task'))),
+          h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add recurring task')),
         h('p', { class: 'small muted', text: 'These repeat every day, week or month. ShiftRhythm fits them around ' + (shiftsMode() ? 'your shifts' : mode() === 'regular' ? 'your ' + workLabel().toLowerCase() + ' days' : 'your day') + ' and your sleep automatically.' }),
-        rec),
+        rec,
+        h('details', { open: !state.recurring.length }, h('summary', { text: 'Suggestions for you' }), root.SR.areas.renderSuggestions())),
       h('section', { class: 'card', 'aria-labelledby': 'oneH' },
         h('div', { class: 'spread' }, h('h2', { id: 'oneH', text: 'One-off tasks' }),
           h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, true); } }, 'Add one-off')),
@@ -494,26 +558,6 @@
             return h('div', { class: 'item' }, h('div', { class: 'body' }, h('span', { class: 'title', text: o.title }), h('span', { class: 'muted small', text: describeTask(o, true) })),
               h('button', { class: 'btn small', type: 'button', onclick: function () { undo('o:' + o.id); } }, 'Undo'));
           })) : null)));
-  }
-
-  var EXAMPLES = [
-    { title: 'Workout', durationMin: 45, per: 'week', times: 4, keepWhole: true, timeOfDay: 'morning', allow: { off: 'yes', day: 'no', night: 'yes' } },
-    { title: 'Singing practice', durationMin: 10, per: 'day', times: 1, allow: { off: 'yes', day: 'yes', night: 'yes' } },
-    { title: 'Choir rehearsal', durationMin: 60, per: 'week', times: 2, keepWhole: true, allow: { off: 'yes', day: 'weekend', night: 'weekend' }, when: 'either' },
-    { title: 'Shoot and edit content', durationMin: 120, per: 'week', times: 1, allow: { off: 'yes', day: 'no', night: 'no' } },
-    { title: 'Plan community outreach', durationMin: 60, per: 'month', times: 2, allow: { off: 'yes', day: 'no', night: 'no' } },
-    { title: 'Security assessment session (work)', durationMin: 90, per: 'week', times: 1, when: 'during', allow: { off: 'no', day: 'yes', night: 'yes' } },
-    { title: 'Data protection documentation (work)', durationMin: 60, per: 'week', times: 2, when: 'during', allow: { off: 'no', day: 'yes', night: 'yes' } },
-    { title: 'Weekly review and planning', durationMin: 30, per: 'week', times: 1, priority: 1, allow: { off: 'yes', day: 'no', night: 'no' } }
-  ];
-  function addExamples() {
-    change(function () {
-      EXAMPLES.forEach(function (e) {
-        if (state.recurring.some(function (r) { return r.title === e.title; })) return;
-        if (e.when === 'during' && mode() === 'free') return;
-        state.recurring.push(St.cleanTask(Object.assign({ id: St.uid() }, e), false));
-      });
-    }, 'Examples added. Edit or pause any of them.');
   }
 
   function openEditor(task, oneoff) {
@@ -984,16 +1028,17 @@
         nav(true)];
     } else if (s === 3) {
       var list = h('div', {});
-      if (!state.recurring.length) list.append(h('div', { class: 'empty', text: 'Nothing yet. Add your own, or start from the examples and edit them.' }));
+      if (!state.recurring.length) list.append(h('div', { class: 'empty', text: 'Nothing yet. Pick from the suggestions below, or add your own.' }));
       state.recurring.forEach(function (t) {
         list.append(h('div', { class: 'item' }, h('div', { class: 'body' }, h('span', { class: 'title', text: t.title }), h('span', { class: 'muted small', text: describeTask(t, false) })),
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(t, false); } }, 'Edit')));
       });
       body = [h('h2', { text: 'Things you do regularly' }),
         h('p', { class: 'small muted', text: 'Workouts, study, practice, chores, side projects, family time. For each one, say how often, how long, and which days it\u2019s allowed on.' }),
-        h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add a task'),
-          h('button', { class: 'btn', type: 'button', onclick: addExamples }, 'Add examples')),
-        list, nav(true)];
+        h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add a task')),
+        list,
+        h('h3', { text: 'Suggested for you' }), root.SR.areas.renderSuggestions(),
+        nav(true)];
     } else {
       body = [h('h2', { text: 'Alarms' }),
         h('p', { text: 'When a focus session, break, travel time or bedtime starts, ShiftRhythm plays a short chime and shows a notification.' }),
@@ -1056,7 +1101,7 @@
     var now = nowAbsPrecise();
     var hu = state.settings.headsUpMin;
     plan.blocks.forEach(function (b) {
-      if (b.done || !TUNE[b.kind]) return;
+      if (b.done || !TUNE[b.kind] || (b.adjusted && b.kind === 'sleep')) return; // you just told us you're resting
       if (now >= b.s && now < b.s + 3 && !fired[b.id]) { markFired(b.id); ring(b, false); }
       else if (hu > 0 && (b.kind === 'task' || b.kind === 'commute') && now >= b.s - hu && now < b.s - hu + 3 && !fired['h:' + b.id]) { markFired('h:' + b.id); ring(b, true); }
     });

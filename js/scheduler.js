@@ -167,6 +167,11 @@
     function abs(d, m) { return idx(d) * DAY + m; }
     function dateOfAbs(a) { return addDays(base, Math.floor(a / DAY)); }
     var nowAbs = opts.nowMin != null ? abs(today, opts.nowMin) : null;
+    // Changes to a single day ("resting now until 19:30", "busy until 17:00", "started work at 06:40").
+    // Minutes count from midnight of that date and may run past 24:00.
+    var adjust = state.adjust || {};
+    function adj(d) { var a = adjust[d]; return a && typeof a === 'object' ? a : null; }
+    function mins(v) { return typeof v === 'number' && isFinite(v) && v >= -DAY && v <= 2 * DAY ? Math.round(v) : null; }
 
     // 1. Fixed structure: shifts, travel, sleep, naps.
     var structure = [];
@@ -176,7 +181,13 @@
       var sh = S.shifts[t];
       var s = abs(d, hm(sh.start)), e = abs(d, hm(sh.end));
       if (e <= s) e += DAY;
-      structure.push({ s: s, e: e, kind: 'shift', title: !shiftsMode && t === 'day' ? S.workLabel : t === 'day' ? 'Day shift' : 'Night shift', shiftType: t });
+      var ad = adj(d) && adj(d).shift, moved = false;
+      if (ad) {
+        var as = mins(ad.start), ae = mins(ad.end);
+        if (as != null && abs(d, as) < e) { s = abs(d, as); moved = 'start'; }
+        if (ae != null && abs(d, ae) > s) { e = abs(d, ae); moved = true; }
+      }
+      structure.push({ s: s, e: e, kind: 'shift', adjusted: moved, title: !shiftsMode && t === 'day' ? S.workLabel : t === 'day' ? 'Day shift' : 'Night shift', shiftType: t });
       if (S.prepMin > 0) structure.push({ s: s - S.commuteMin - S.prepMin, e: s - S.commuteMin, kind: 'prep', title: 'Get ready for ' + (!shiftsMode && t === 'day' ? wl : t === 'day' ? 'day shift' : 'night shift') });
       if (S.commuteMin > 0) {
         structure.push({ s: s - S.commuteMin, e: s, kind: 'commute', title: 'Travel to ' + (shiftsMode ? 'work' : wl) });
@@ -247,6 +258,35 @@
     });
     structure = structure.filter(function (b) { return b.kind !== 'sleep'; }).concat(merged);
 
+    // 1c. Today didn't go to plan: actual rest replaces the planned sleep it overlaps; busy time is blocked out.
+    var extraBusy = [];
+    dates.forEach(function (d) {
+      var a = adj(d);
+      if (!a) return;
+      if (Array.isArray(a.rest)) {
+        var rs0 = mins(a.rest[0]), re0 = mins(a.rest[1]);
+        if (rs0 != null && re0 != null && re0 > rs0) {
+          var ovS = abs(d, rs0), ovE = abs(d, re0);
+          structure = structure.filter(function (b) {
+            if ((b.kind !== 'sleep' && b.kind !== 'nap') || b.e <= ovS || b.s >= ovE) return true;
+            if (b.s < ovS) { b.e = ovS; return b.e - b.s >= 10; }         // the part you did sleep before
+            if (b.e > ovE + 180) { b.s = ovE; return true; }               // a long sleep still to come
+            return false;
+          });
+          Object.keys(wakeAt).forEach(function (k) { if (wakeAt[k] >= ovS && wakeAt[k] <= ovE + 180) wakeAt[k] = ovE; });
+          structure.push({ s: ovS, e: ovE, kind: 'sleep', title: 'Rest', adjusted: true });
+          extraBusy.push({ s: ovS, e: ovE });
+        }
+      }
+      (Array.isArray(a.busy) ? a.busy : []).slice(0, 10).forEach(function (x) {
+        var bs0 = mins(x && x[0]), be0 = mins(x && x[1]);
+        if (bs0 == null || be0 == null || be0 <= bs0) return;
+        var bS = abs(d, bs0), bE = abs(d, be0);
+        structure.push({ s: bS, e: bE, kind: 'busy', title: typeof x[2] === 'string' && x[2] ? x[2].slice(0, 60) : 'Busy', adjusted: true });
+        extraBusy.push({ s: bS, e: bE });
+      });
+    });
+
     // 2. Free time per day (outside shifts) and quiet time inside shifts.
     var free = {}, work = {}, load = {}, roleWork = {};
     horizon.forEach(function (d) {
@@ -254,10 +294,14 @@
       structure.forEach(function (b) { w = subtract(w, b.s, b.e); });
       var ww = [];
       structure.forEach(function (b) {
-        if (b.kind === 'shift' && dateOfAbs(b.s) === d) ww.push({ s: b.s + S.handoverMin, e: b.e - S.shiftEndBufferMin });
+        if (b.kind === 'shift' && dateOfAbs(b.s) === d) ww.push({ s: b.s + (b.adjusted === 'start' ? 0 : S.handoverMin), e: b.e - S.shiftEndBufferMin }); // started early: ready to work straight away
       });
       var rw = {};
       structure.forEach(function (b) { if (b.kind === 'commit' && dateOfAbs(b.s) === d) (rw[b.role] = rw[b.role] || []).push({ s: b.s, e: b.e }); });
+      extraBusy.forEach(function (x) {
+        ww = subtract(ww, x.s, x.e);
+        Object.keys(rw).forEach(function (k) { rw[k] = subtract(rw[k], x.s, x.e); });
+      });
       if (nowAbs != null && d === today) {
         var cut = Math.ceil(nowAbs / 5) * 5;
         w = subtract(w, -Infinity, cut);
