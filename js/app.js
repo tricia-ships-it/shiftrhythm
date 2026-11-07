@@ -198,7 +198,7 @@
         h('span', { class: 'countdown', id: 'countdown', 'data-at': String(next.s) }, countdownText(next.s - now)), h('span', { class: 'muted small', text: 'at ' + next.startTime })));
     }
 
-    var quick = renderQuickAdd();
+    var quick = root.SR.capture.renderCapture();
 
     var list = h('div', { class: 'timeline' });
     if (!blocks.length) list.append(h('div', { class: 'empty', text: 'Nothing planned today.' }));
@@ -211,42 +211,14 @@
         h('span', { class: 'muted small', text: doneN + ' of ' + todayTasks.length + ' task blocks done' })),
       list);
 
-    var side = h('div', { class: 'stack' }, nowCard, quick, renderUnplaced());
-    return h('div', { class: 'grid2' }, timeline, side);
+    var side = h('div', { class: 'stack' }, nowCard, root.SR.capture.renderBriefing(), renderUnplaced(),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, 'Recalculate')));
+    return h('div', { class: 'stack' }, quick, h('div', { class: 'grid2' }, timeline, side));
   }
   function countdownText(min) {
     if (min < 0) min = 0;
     var s = Math.floor(min * 60), hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
     return 'in ' + (hh ? hh + ':' + pad(mm) : mm) + ':' + pad(ss);
-  }
-
-  function renderQuickAdd() {
-    var title = h('input', { type: 'text', id: 'qaTitle', placeholder: 'e.g. Call the venue for the Builders Circle event', 'aria-label': 'New task' });
-    var mins = h('input', { type: 'number', id: 'qaMin', min: '5', max: '600', step: '5', value: '30', 'aria-label': 'Minutes' });
-    var when = h('select', { id: 'qaWhen', 'aria-label': 'When' },
-      h('option', { value: 'today' }, 'Today'), h('option', { value: 'tomorrow' }, 'Tomorrow'), h('option', { value: 'week' }, 'This week'), h('option', { value: 'any' }, 'Anytime soon'));
-    var during = h('input', { type: 'checkbox', id: 'qaDuring' });
-    function add() {
-      var tt = title.value.trim();
-      if (!tt) { title.focus(); return; }
-      var t = todayIso(), w = when.value;
-      var o = St.cleanTask({
-        id: St.uid(), title: tt, durationMin: Number(mins.value) || 30, when: during.checked ? 'during' : 'outside',
-        date: w === 'today' ? t : w === 'tomorrow' ? Sch.addDays(t, 1) : '',
-        due: w === 'week' ? Sch.addDays(Sch.weekStart(t, state.settings.weekStartsOn), 6) : ''
-      }, true);
-      change(function () { state.oneoffs.push(o); }, 'Added. Plan recalculated.');
-      var placed = plan.blocks.some(function (b) { return b.key === 'o:' + o.id; });
-      if (!placed) toast('Added, but it does not fit yet. See "Could not fit".');
-    }
-    title.addEventListener('keydown', function (e) { if (e.key === 'Enter') add(); });
-    return h('section', { class: 'card', 'aria-labelledby': 'qaH' },
-      h('h3', { id: 'qaH', text: 'Something new came up?' }),
-      title,
-      h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', {}, 'Minutes'), mins), h('label', { class: 'field' }, h('span', {}, 'When'), when)),
-      h('label', { class: 'check' }, during, 'Do it during my shift (work task)'),
-      h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: add }, 'Add and replan'),
-        h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, 'Recalculate')));
   }
 
   function renderUnplaced() {
@@ -315,8 +287,8 @@
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(t, false); } }, 'Edit'),
           h('button', { class: 'btn small', type: 'button', onclick: function () { change(function () { t.active = !t.active; }, t.active ? 'Paused.' : 'Resumed.'); } }, t.active ? 'Pause' : 'Resume'))));
     });
-    var open = state.oneoffs.filter(function (o) { return !o.done; });
-    var done = state.oneoffs.filter(function (o) { return o.done; });
+    var open = state.oneoffs.filter(function (o) { return !o.done && !o.project; });
+    var done = state.oneoffs.filter(function (o) { return o.done && !o.project; });
     var one = h('div', {});
     if (!open.length) one.append(h('div', { class: 'empty', text: 'No one-off tasks. Add them from Today when something comes up.' }));
     open.forEach(function (o) {
@@ -326,7 +298,7 @@
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(o, true); } }, 'Edit'),
           h('button', { class: 'btn small primary', type: 'button', onclick: function () { markDone('o:' + o.id); } }, 'Done'))));
     });
-    return h('div', { class: 'grid2' },
+    return h('div', { class: 'stack' }, root.SR.capture.renderProjects(), h('div', { class: 'grid2' },
       h('section', { class: 'card', 'aria-labelledby': 'recH' },
         h('div', { class: 'spread' }, h('h2', { id: 'recH', text: 'Recurring tasks' }),
           h('div', { class: 'row' },
@@ -342,7 +314,7 @@
           done.slice(-30).reverse().map(function (o) {
             return h('div', { class: 'item' }, h('div', { class: 'body' }, h('span', { class: 'title', text: o.title }), h('span', { class: 'muted small', text: describeTask(o, true) })),
               h('button', { class: 'btn small', type: 'button', onclick: function () { undo('o:' + o.id); } }, 'Undo'));
-          })) : null));
+          })) : null)));
   }
 
   var EXAMPLES = [
@@ -585,6 +557,7 @@
             numField('handover', 'Shift settling-in time', 'handoverMin', 0, 180, 5, 'min'),
             numField('capOff', 'Max task time, off days', 'capOffDay', 0, 960, 15, 'min'),
             numField('capShift', 'Max task time, shift days', 'capShiftDay', 0, 480, 15, 'min')),
+          h('div', { class: 'fields' }, numField('maxSession', 'Longest sitting for a project step', 'maxSession', 30, 480, 15, 'min')),
           h('p', { class: 'small muted', text: 'The shift-day limit protects you after a long shift. Work tasks done during the shift do not count towards it.' })),
         h('section', { class: 'card' }, h('h2', { text: 'Shift hours' }), shiftHoursFields()),
         h('section', { class: 'card' }, h('h2', { text: 'Week' }),
@@ -603,6 +576,9 @@
             Al.permission() === 'default' ? h('button', { class: 'btn small', type: 'button', onclick: function () { Al.askPermission().then(render); } }, 'Allow') : null),
           h('p', { class: 'small muted', text: 'Alarms ring while ShiftRhythm is open (a tab or the installed app). For alarms when it is closed, send your plan to your phone calendar.' }),
           h('button', { class: 'btn', type: 'button', onclick: exportIcs }, 'Send plan to phone calendar (.ics)')),
+        h('section', { class: 'card' }, h('h2', { text: 'Voice typing' }),
+          h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'voice', checked: S.voice, onchange: function (e) { var v = e.target.checked; change(function () { S.voice = v; }); } }), 'Use the browser\u2019s voice typing for the Speak button'),
+          h('p', { class: 'small muted', text: 'Off by default. Chrome and Edge send the audio to Google or Microsoft to turn it into text. Your keyboard\u2019s own microphone key always works too.' })),
         h('section', { class: 'card' }, h('h2', { text: 'Backup' }),
           h('p', { class: 'small muted', text: 'Your data lives only in this browser on this device. Save a backup file to move it to another device or keep it safe.' }),
           pass,
@@ -743,8 +719,15 @@
     if (cd) cd.textContent = countdownText(Number(cd.dataset.at) - now);
   }
 
+  // ---------- shared with capture.js ----------
+  root.SR.app = {
+    h: h, state: function () { return state; }, plan: function () { return plan; }, change: change, render: render, toast: toast,
+    todayIso: todayIso, nowMin: nowMin, dur: dur, dayLabel: dayLabel
+  };
+
   // ---------- boot ----------
   function boot() {
+    root.SR.capture.init();
     replan();
     render();
     root.addEventListener('hashchange', render);
@@ -756,7 +739,7 @@
     doc.addEventListener('visibilitychange', function () { if (!doc.hidden) { tick(); render(); } });
     setInterval(tick, 1000 * 5);
     setInterval(function () { if (route() === 'today' && !doc.querySelector('.modal-bg') && !doc.activeElement.matches('input,select,textarea')) render(); }, 60000);
-    if ('serviceWorker' in root.navigator && /^https?:$/.test(root.location.protocol)) {
+    if ('serviceWorker' in root.navigator && /^https?:$/.test(root.location.protocol) && doc.querySelector('link[rel=manifest]')) {
       root.navigator.serviceWorker.register('sw.js').catch(function () {});
     }
   }

@@ -153,3 +153,16 @@ test('getting-ready time before a shift is protected', () => {
   const sing = tasksOn(p, '2026-11-10', 'Singing')[0];
   assert.ok(!overlaps(sing, prep));
 });
+
+test('project steps respect their window and may slip only to the project deadline', () => {
+  const p = plan({ settings: { capOffDay: 60 }, oneoffs: [
+    { id: 'a', title: 'Step A', durationMin: 60, after: '2026-11-13', due: '2026-11-13', deadline: '2026-11-15', project: 'p1' },
+    { id: 'b', title: 'Step B', durationMin: 60, after: '2026-11-13', due: '2026-11-13', deadline: '2026-11-15', project: 'p1' },
+    { id: 'c', title: 'Later step', durationMin: 30, after: '2026-11-20', due: '2026-11-22', project: 'p1' }
+  ] });
+  const a = p.blocks.find(b => b.title === 'Step A'), b = p.blocks.find(b => b.title === 'Step B');
+  assert.equal(a.date, '2026-11-13');
+  assert.ok(b.date > '2026-11-13' && b.date <= '2026-11-15', 'B slips past its own window because of the daily limit');
+  assert.ok(!p.blocks.find(x => x.title === 'Later step'), 'outside the planning window: planned later');
+  assert.equal(a.project, 'p1');
+});

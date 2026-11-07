@@ -51,9 +51,15 @@
       notes: str(t.notes, 500)
     };
     if (!out.title) return null;
+    out.weekdays = Array.isArray(t.weekdays) ? t.weekdays.map(Number).filter(function (x, i, a) { return x >= 0 && x <= 6 && a.indexOf(x) === i; }) : [];
     if (oneoff) {
       out.date = ISO.test(t.date || '') ? t.date : '';
       out.due = ISO.test(t.due || '') ? t.due : '';
+      out.after = ISO.test(t.after || '') ? t.after : '';
+      out.deadline = ISO.test(t.deadline || '') ? t.deadline : '';
+      out.project = str(t.project, 40).replace(/[^a-zA-Z0-9_-]/g, '');
+      out.projectTitle = str(t.projectTitle, 120);
+      out.step = num(t.step, 0, 500, 0);
       out.done = !!t.done;
     } else {
       out.per = oneOf(t.per, ['day', 'week', 'month'], 'week');
@@ -74,6 +80,8 @@
     st.sleepHours = num(r.sleepHours, 3, 12, D.sleepHours);
     st.volume = num(r.volume, 0, 1, D.volume);
     st.sound = r.sound !== false;
+    st.voice = r.voice === true;
+    st.maxSession = num(r.maxSession, 30, 480, D.maxSession);
     st.chime = oneOf(r.chime, ['bells', 'marimba', 'bubbles'], 'bells');
     st.wakeTime = HM.test(r.wakeTime || '') ? r.wakeTime : D.wakeTime;
     st.weekStartsOn = num(r.weekStartsOn, 0, 6, 1);

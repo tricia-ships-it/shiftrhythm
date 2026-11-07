@@ -8,6 +8,10 @@ Everything runs on your own device. There's no account, server, analytics or net
 
 ## What it does
 
+- **Say it, it plans it.** Type or speak what's coming up, for example *"Plan the Builders Circle event by 28 Nov, about 8 hours. Call the venue tomorrow at 3pm. Gym 3 times a week."* ShiftRhythm works out each item: the deadline, how long it takes, whether it's a work task, whether it repeats, and how urgent it is.
+- **Automatic project breakdown.** A task with a deadline is broken into sensible steps for its kind of work (events, content, security assessments, writing, study, outreach). Each step gets its own window of days, finishing a little before the deadline, and is fitted around your shifts. You see where every step will land, and if it won't all fit, the smallest deadline that would work.
+- **Daily briefing.** Your shift, when to leave, recovery sleep, what's left today, how each project is going (on track or behind), and your weekly goals so far.
+- **Optional extras inside Claude.** When opened inside Claude, there's also a *Refine steps with Claude* button and an *Ask Claude how to approach today* button. The standalone app never uses them.
 - **Shift-aware days.** It handles day shifts, night shifts that cross midnight, travel time, time to get ready, sleep after a night shift, and a nap before the first night of a run.
 - **Recurring tasks, scheduled automatically.** Set something to repeat *n* times per day, week or month. ShiftRhythm spreads it across the allowed days and resets each day, week and month.
 - **Rules for each task:**
@@ -59,6 +63,7 @@ The planning window runs from today to the end of next week, so weekly goals are
 
 ## Privacy and security
 
+- **Voice typing is opt-in.** The *Speak* button uses your browser's speech recognition only after you turn it on. Chrome and Edge send that audio to Google or Microsoft. Your keyboard's own dictation works without it.
 - **No network.** The page's Content Security Policy sets `connect-src 'none'` and only allows its own scripts. Even a bug or an injected script can't send data anywhere.
 - **No dependencies.** It's plain JavaScript with no frameworks, packages, CDNs or web fonts, so there's no supply chain to compromise. The whole app is under 2,000 lines you can read.
 - **Untrusted input is handled safely.** All text is rendered with `textContent`, never `innerHTML`, and imported backups are validated field by field.
@@ -79,6 +84,8 @@ Project layout:
 index.html            app shell and Content Security Policy
 css/app.css           styles (light and dark)
 js/scheduler.js       planning engine (pure, testable in Node)
+js/smart.js           understands typed/spoken tasks and breaks projects into steps (local rules)
+js/capture.js         capture panel, projects, daily briefing, voice typing
 js/store.js           local storage, validation, encrypted backups
 js/alarm.js           chimes (Web Audio) and notifications
 js/ics.js             calendar export

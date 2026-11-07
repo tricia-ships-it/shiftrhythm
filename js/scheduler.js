@@ -88,7 +88,9 @@
     sound: true,
     volume: 0.6,
     chime: 'bells',
-    headsUpMin: 5
+    headsUpMin: 5,
+    maxSession: 120,       // longest single sitting for a project step
+    voice: false           // browser voice typing (opt-in: it uses an online speech service)
   };
   var TIME_OF_DAY = {
     morning: [5 * 60, 12 * 60],
@@ -284,7 +286,7 @@
           if (!remaining.length) return;
           if (!usable.length) {
             remaining.forEach(function (key) {
-              unplaced.push({ key: key, taskId: r.id, title: r.title, reason: (r.when === 'during' ? 'No shifts' : 'No allowed days') + ' left in the week starting ' + ws + '.' });
+              unplaced.push({ key: key, taskId: r.id, title: r.title, reason: (r.when === 'during' ? 'No shifts' : 'No allowed days') + ' left in ' + (ws <= today ? 'this' : 'next') + ' week.' });
             });
             return;
           }
@@ -319,17 +321,25 @@
       var key = 'o:' + o.id;
       if (o.done || log[key]) return;
       var cands, overdue = false;
+      var after = isIso(o.after) ? o.after : null;
+      var hardDue = isIso(o.deadline) ? o.deadline : null; // project deadline: a step may slip to here, never past
       if (isIso(o.date)) {
         if (o.date > horizonEnd) return;          // planned for later
         if (o.date >= from) cands = eligible(o, o.date) ? [o.date] : [];
         else { overdue = true; cands = horizon.filter(function (d) { return eligible(o, d); }); }
       } else {
+        if (after && after > horizonEnd) return;  // this step's window starts later
         var due = isIso(o.due) ? o.due : null;
-        cands = horizon.filter(function (d) { return eligible(o, d) && (!due || due < from || d <= due); });
-        if (due && due < from) overdue = true;
+        var limit = hardDue || due;
+        if (limit && limit < from) { overdue = true; limit = null; after = null; }
+        cands = horizon.filter(function (d) { return eligible(o, d) && (!after || d >= after) && (!limit || d <= limit); });
+        if (due && hardDue && due < hardDue) {
+          // within its own window first, then later days up to the project deadline
+          cands = cands.filter(function (d) { return d <= due; }).concat(cands.filter(function (d) { return d > due; }));
+        }
       }
       if (!cands.length) { unplaced.push({ key: key, taskId: o.id, title: o.title, reason: isIso(o.date) ? 'Not allowed on ' + o.date + ' (check shift rules).' : 'No allowed day before it is due.' }); return; }
-      instances.push(inst(o, key, cands, { source: 'oneoff', overdue: overdue, periodEnd: isIso(o.due) ? o.due : (isIso(o.date) ? o.date : horizonEnd) }));
+      instances.push(inst(o, key, cands, { source: 'oneoff', overdue: overdue, project: o.project || '', periodEnd: isIso(o.due) ? o.due : (isIso(o.date) ? o.date : horizonEnd) }));
     });
 
     // 4. Place instances: fixed times first, then priority, deadline, fewest options, longest.
@@ -419,7 +429,7 @@
       placed.forEach(function (p, n) {
         taskBlocks.push({
           s: p.s, e: p.e, kind: 'task', title: it.title, key: it.key, taskId: it.taskId, source: it.source,
-          part: placed.length > 1 ? (n + 1) + '/' + placed.length : '', during: pool === 'work',
+          part: placed.length > 1 ? (n + 1) + '/' + placed.length : '', during: pool === 'work', project: it.project || '',
           conflict: conflict, overdue: !!it.overdue
         });
         if (p.be > p.bs) taskBlocks.push({ s: p.bs, e: p.be, kind: 'break', title: 'Break' });
