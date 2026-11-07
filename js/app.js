@@ -696,8 +696,6 @@
       [[1, 'Monday'], [0, 'Sunday'], [6, 'Saturday']].map(function (o) { return h('option', { value: String(o[0]), selected: S.weekStartsOn === o[0] }, o[1]); }));
 
     var pass = h('input', { type: 'password', id: 'bkPass', placeholder: 'Optional passphrase', autocomplete: 'new-password' });
-    var ipass = h('input', { type: 'password', id: 'imPass', placeholder: 'Passphrase (if encrypted)', autocomplete: 'off' });
-    var file = h('input', { type: 'file', id: 'imFile', accept: '.json,.srbackup,application/json' });
     var reset = h('button', { class: 'btn danger', type: 'button', onclick: function () {
       if (!reset.dataset.armed) { reset.dataset.armed = '1'; reset.textContent = 'Tap again to erase everything'; return; }
       state = St.blank(); save(); replan(); root.location.hash = '#today'; render(); toast('All data erased from this device.');
@@ -766,15 +764,7 @@
               toast(pass.value ? 'Encrypted backup saved.' : 'Backup saved.');
             }, function (e) { toast(e.message); });
           } }, 'Save backup'),
-          h('h3', { text: 'Restore' }), file, ipass,
-          h('button', { class: 'btn', type: 'button', onclick: function () {
-            var fl = file.files && file.files[0];
-            if (!fl) { toast('Choose a backup file first.'); return; }
-            if (fl.size > 5 * 1024 * 1024) { toast('That file is too large to be a backup.'); return; }
-            fl.text().then(function (txt) { return St.importBackup(txt, ipass.value); }).then(function (s) {
-              state = s; state.setupDone = true; save(); replan(); render(); toast('Backup restored.');
-            }, function (e) { toast(e.message); });
-          } }, 'Restore backup'),
+          h('h3', { text: 'Restore' }), renderRestore(),
           h('p', { class: 'small muted', text: 'Restoring replaces everything on this device.' })),
         h('section', { class: 'card' }, h('h2', { text: 'Privacy' }),
           h('p', { class: 'small', text: 'ShiftRhythm makes no network requests. There is no account, server, analytics or tracking. The page blocks all outside connections, so even a bug cannot send your data anywhere.' }),
@@ -849,6 +839,20 @@
     return card;
   }
 
+  function renderRestore() {
+    var ipass = h('input', { type: 'password', id: 'imPass', placeholder: 'Passphrase (if the backup is encrypted)', autocomplete: 'off' });
+    var file = h('input', { type: 'file', id: 'imFile', accept: '.json,.srbackup,application/json' });
+    return h('div', { class: 'stack' }, file, ipass,
+      h('button', { class: 'btn', type: 'button', onclick: function () {
+        var fl = file.files && file.files[0];
+        if (!fl) { toast('Choose a backup file first.'); return; }
+        if (fl.size > 5 * 1024 * 1024) { toast('That file is too large to be a backup.'); return; }
+        fl.text().then(function (txt) { return St.importBackup(txt, ipass.value); }).then(function (s2) {
+          state = s2; state.setupDone = true; save(); replan(); root.location.hash = '#today'; render(); toast('Backup restored.');
+        }, function (e) { toast(e.message); });
+      } }, 'Restore backup'));
+  }
+
   function exportIcs() {
     var txt = Ics.build(plan, ['task', 'break', 'prep', 'commute', 'shift'], state.settings.headsUpMin);
     download('shiftrhythm-' + plan.from + '-to-' + plan.to + '.ics', txt, 'text/calendar');
@@ -867,10 +871,17 @@
     }
     var body;
     if (s === 0) {
+      var inClaude = root.claude && typeof root.claude.use === 'function';
       body = [h('h2', { text: 'A planner that follows your shifts' }),
         h('p', { text: 'Most planners assume you wake at 7 and work 9 to 5. ShiftRhythm starts from your rota instead. Tell it your shifts and the things you want to do regularly, and it builds each day and week around your work, your sleep and your focus rhythm. It rings a soft chime when it is time to switch.' }),
         h('p', { class: 'small muted', text: 'Everything stays on this device. No account, no server, no tracking.' }),
-        nav(false, 'Get started')];
+        nav(false, 'Set up from scratch'),
+        h('div', { class: 'proposal' },
+          h('strong', { text: 'Already using ShiftRhythm on another device?' }),
+          inClaude ? null : h('details', {}, h('summary', { class: 'small', text: 'Sync from your other device (recommended)' }),
+            h('p', { class: 'small muted', text: 'Use the same GitHub username, repository and passphrase as on your other device, with a token made for this device. Everything comes across: shifts, tasks, streaks and coins.' }),
+            renderSyncCard()),
+          h('details', {}, h('summary', { class: 'small', text: 'Restore a backup file' }), renderRestore()))];
     } else if (s === 1) {
       body = [h('h2', { text: 'Your shifts' }), shiftHoursFields(),
         h('div', { class: 'fields' }, numField('wCommute', 'Travel each way', 'commuteMin', 0, 240, 5, 'min')),
