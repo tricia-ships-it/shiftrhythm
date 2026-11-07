@@ -194,7 +194,7 @@
   // ---------- parse ----------
   function parseOne(text, today, settings) {
     settings = settings || {};
-    var raw = String(text || '').trim();
+    var raw = String(text || '').trim().slice(0, 600);
     if (!raw) return null;
     var t = raw.toLowerCase();
     var ws = settings.weekStartsOn == null ? 1 : settings.weekStartsOn;
@@ -234,7 +234,7 @@
 
   // Several tasks in one go: split on new lines, "also", "then", semicolons and full stops.
   function parse(text, today, settings) {
-    var parts = String(text || '').split(/\n+|;|\.\s+(?=[A-Z])|\b(?:and also|also,|plus|then i (?:need|have) to)\b/i)
+    var parts = String(text || '').slice(0, 4000).split(/\n+|;|\.\s+(?=[A-Z])|\b(?:and also|also,|plus|then i (?:need|have) to)\b/i)
       .map(function (s) { return (s || '').trim(); })
       .filter(function (s) { return s && s.length > 2; });
     return parts.map(function (p) { return parseOne(p, today, settings); }).filter(Boolean);
@@ -295,7 +295,7 @@
     var out = {}, unknown = [];
     if (!/^\d{4}-\d{2}$/.test(month || '')) return { shifts: out, unknown: ['month'] };
     var dates = Sch.monthDates(month + '-01');
-    var t = String(text || '').toLowerCase().replace(/day off/g, 'off');
+    var t = String(text || '').slice(0, 4000).toLowerCase().replace(/day off/g, 'off');
     var pairs = [], m, rx = /\b(\d{1,2})\s*[:=.\-)]?\s*([a-z]+|\d{1,2}-\d{1,2}|-)(?=[\s,;]|$)/g;
     while ((m = rx.exec(t))) pairs.push(m);
     if (pairs.length >= 3) {

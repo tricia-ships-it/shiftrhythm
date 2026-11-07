@@ -5,7 +5,7 @@
  */
 (function (root) {
   'use strict';
-  function esc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+  function esc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n|\u2028|\u2029/g, '\\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ''); }
   function stamp(date, time) { return date.replace(/-/g, '') + 'T' + time.replace(':', '') + '00'; }
   function fold(line) {
     var out = [];

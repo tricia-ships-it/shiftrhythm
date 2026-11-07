@@ -31,7 +31,7 @@
   // ---------- capture panel ----------
   function renderCapture() {
     var ta = h('textarea', {
-      id: 'capture', rows: '3', value: ui.text, 'aria-label': 'What is coming up',
+      id: 'capture', rows: '3', value: ui.text, 'aria-label': 'What is coming up', maxlength: '4000',
       placeholder: 'Say or type what\u2019s coming up. For example: Plan the Builders Circle event by 28 Nov, about 8 hours. Call the venue tomorrow at 3pm. Gym 3 times a week.',
       oninput: function (e) { ui.text = e.target.value; },
       onkeydown: function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) understand(); }

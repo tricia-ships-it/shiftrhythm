@@ -1,72 +1,104 @@
 /*
  * ShiftRhythm encrypted sync through your own private GitHub repository.
  *
- *  - Your plan is encrypted ON THIS DEVICE (AES-GCM 256, key from your passphrase with
- *    PBKDF2-SHA-256, 310,000 rounds) before it leaves. GitHub only ever stores ciphertext.
- *  - The access token should be a fine-grained token limited to ONE private repository,
- *    with only "Contents: read and write". It can't touch anything else in your account.
- *  - The encryption key is kept in this browser as a non-extractable key: the app can use
- *    it, but no script can read it out. Your passphrase itself is never stored.
- *  - The only address the app may contact is api.github.com (enforced by the page's CSP).
+ * Security design
+ *  - End-to-end encryption: your plan is sealed ON THIS DEVICE with AES-GCM-256 before it
+ *    leaves. The key comes from your passphrase (PBKDF2-SHA-256, 600,000 rounds, random salt).
+ *    GitHub only ever stores ciphertext; tampering is detected (GCM tag + associated data).
+ *  - Least privilege: the fine-grained token is limited to ONE private repository with
+ *    only "Contents: read and write".
+ *  - Nothing readable at rest: the encryption key is stored as a NON-EXTRACTABLE key in
+ *    IndexedDB (usable by the app, never readable by any script), and the GitHub token is
+ *    itself encrypted with that key. The passphrase is never stored.
+ *  - Rollback protection: a device refuses a synced copy older than one it has already seen.
+ *  - Untrusted input: everything decrypted is validated field by field before use.
+ *  - The page's Content Security Policy only allows connections to api.github.com.
  */
 (function (root) {
   'use strict';
   var API = 'https://api.github.com';
   var FILE = 'shiftrhythm.sync.json';
   var CFG_KEY = 'shiftrhythm.sync';
-  var ITER = 310000;
+  var ITER = 600000;              // OWASP 2023 guidance for PBKDF2-HMAC-SHA256
   var subtle = (root.crypto && root.crypto.subtle) || null;
+  var AAD_DATA = 'ShiftRhythm/1', AAD_TOKEN = 'ShiftRhythm/token/1';
 
   // ---------- encoding ----------
   function b64(buf) { var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
   function unb64(s) { var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
   function rand(n) { return root.crypto.getRandomValues(new Uint8Array(n)); }
+  function te(s) { return new TextEncoder().encode(s); }
 
   // ---------- crypto ----------
-  function deriveKey(pass, salt) {
-    return subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']).then(function (k) {
-      return subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: ITER, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  function deriveKey(pass, salt, iter) {
+    return subtle.importKey('raw', te(pass), 'PBKDF2', false, ['deriveKey']).then(function (k) {
+      return subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter || ITER, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     });
   }
-  function seal(key, salt, state, device) {
+  function seal(key, salt, state, device, iter) {
     var iv = rand(12);
-    var aad = new TextEncoder().encode('ShiftRhythm/1');
-    return subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: aad }, key, new TextEncoder().encode(JSON.stringify(state))).then(function (ct) {
-      return JSON.stringify({ app: 'ShiftRhythm', v: 1, kdf: 'PBKDF2-SHA256', iter: ITER, salt: b64(salt), iv: b64(iv), data: b64(ct), updatedAt: new Date().toISOString(), device: String(device || '').slice(0, 40) });
+    return subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: te(AAD_DATA) }, key, te(JSON.stringify(state))).then(function (ct) {
+      return JSON.stringify({ app: 'ShiftRhythm', v: 1, kdf: 'PBKDF2-SHA256', iter: iter || ITER, salt: b64(salt), iv: b64(iv), data: b64(ct), updatedAt: new Date().toISOString(), device: String(device || '').slice(0, 40) });
     });
   }
   function unseal(key, env) {
-    var aad = new TextEncoder().encode('ShiftRhythm/1');
-    return subtle.decrypt({ name: 'AES-GCM', iv: unb64(env.iv), additionalData: aad }, key, unb64(env.data)).then(function (pt) {
+    return subtle.decrypt({ name: 'AES-GCM', iv: unb64(env.iv), additionalData: te(AAD_DATA) }, key, unb64(env.data)).then(function (pt) {
       return JSON.parse(new TextDecoder().decode(pt));
     });
   }
+  function sealToken(key, token) {
+    var iv = rand(12);
+    return subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: te(AAD_TOKEN) }, key, te(token)).then(function (ct) { return { iv: b64(iv), ct: b64(ct) }; });
+  }
+  function openToken(key, enc) {
+    return subtle.decrypt({ name: 'AES-GCM', iv: unb64(enc.iv), additionalData: te(AAD_TOKEN) }, key, unb64(enc.ct)).then(function (pt) { return new TextDecoder().decode(pt); });
+  }
+  // The synced file comes from the network: check its shape before trusting any of it.
+  function validEnvelope(env) {
+    if (!env || env.app !== 'ShiftRhythm' || env.v !== 1) return false;
+    var iter = Number(env.iter || 310000);
+    if (!(iter >= 100000 && iter <= 5000000)) return false;
+    if (typeof env.salt !== 'string' || typeof env.iv !== 'string' || typeof env.data !== 'string') return false;
+    try { return unb64(env.salt).length === 16 && unb64(env.iv).length === 12 && env.data.length < 8 * 1024 * 1024; } catch (e) { return false; }
+  }
+  function iterOf(env) { return Number(env.iter || 310000); }
+
+  // Passphrase rules for a NEW sync space (joining an existing one just has to match).
+  var COMMON = /^(password|passphrase|qwerty|letmein|iloveyou|welcome|admin|shiftrhythm|123456)/i;
+  function passProblem(p) {
+    p = String(p || '');
+    if (p.length < 12) return 'Use at least 12 characters. A short sentence is easiest to remember.';
+    if (/^\d+$/.test(p)) return 'Use words, not only numbers.';
+    if (new Set(p.toLowerCase()).size < 6) return 'That passphrase repeats too few different characters.';
+    if (COMMON.test(p.replace(/\s/g, ''))) return 'That passphrase is too common. Pick something only you would think of.';
+    return '';
+  }
 
   // ---------- merge ----------
-  // Used only when BOTH devices changed since the last sync.
-  // The newer copy wins; nothing finished on either device is lost; tasks added on either side are kept.
+  // Used only when BOTH devices changed since the last sync. Inputs are already validated.
   function merge(a, b) {
     var newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b, older = newer === a ? b : a;
     var out = JSON.parse(JSON.stringify(newer));
     out.log = out.log || {};
     Object.keys(older.log || {}).forEach(function (k) {
-      var x = out.log[k], y = older.log[k];
+      if (!Object.prototype.hasOwnProperty.call(older.log, k) || /^(__proto__|constructor|prototype)$/.test(k)) return;
+      var x = Object.prototype.hasOwnProperty.call(out.log, k) ? out.log[k] : null, y = older.log[k];
       if (!x || (y.status === 'done' && x.status !== 'done')) out.log[k] = y;
     });
-    ['recurring', 'oneoffs'].forEach(function (list) {
+    ['recurring', 'oneoffs', 'roles'].forEach(function (list) {
       out[list] = out[list] || [];
-      var ids = {}; out[list].forEach(function (x) { ids[x.id] = true; });
-      (older[list] || []).forEach(function (x) { if (!ids[x.id]) out[list].push(x); });
+      var ids = {}; out[list].forEach(function (x) { ids['#' + x.id] = true; });
+      (older[list] || []).forEach(function (x) { if (!ids['#' + x.id]) out[list].push(x); });
     });
     var doneIds = {};
-    (older.oneoffs || []).forEach(function (o) { if (o.done) doneIds[o.id] = true; });
-    out.oneoffs.forEach(function (o) { if (doneIds[o.id]) o.done = true; });
+    (older.oneoffs || []).forEach(function (o) { if (o.done) doneIds['#' + o.id] = true; });
+    out.oneoffs.forEach(function (o) { if (doneIds['#' + o.id]) o.done = true; });
     out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
     return out;
   }
 
   // ---------- config & key storage ----------
-  function loadCfg() { try { return JSON.parse(root.localStorage.getItem(CFG_KEY) || 'null') || {}; } catch (e) { return {}; } }
+  function loadCfg() { try { var c = JSON.parse(root.localStorage.getItem(CFG_KEY) || 'null'); return c && typeof c === 'object' ? c : {}; } catch (e) { return {}; } }
   function saveCfg(c) { try { root.localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch (e) {} }
   function idb() {
     return new Promise(function (res, rej) {
@@ -83,13 +115,14 @@
 
   // ---------- GitHub ----------
   var NAME = /^[A-Za-z0-9_.-]{1,100}$/;
-  function gh(cfg, path, opts) {
+  var token = null; // decrypted token, kept in memory only
+  function gh(cfg, path, opts, tok) {
     opts = opts || {};
     return root.fetch(API + path, {
       method: opts.method || 'GET',
-      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + (tok || token), 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
-      cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer'
+      cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error'
     }).then(function (r) {
       if (r.status === 404 && opts.allow404) return null;
       if (!r.ok) { var e = new Error('GitHub said ' + r.status); e.status = r.status; throw e; }
@@ -97,11 +130,12 @@
     });
   }
   function repoPath(cfg) { return '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo); }
-  function getFile(cfg) {
-    return gh(cfg, repoPath(cfg) + '/contents/' + FILE, { allow404: true }).then(function (j) {
+  function getFile(cfg, tok) {
+    return gh(cfg, repoPath(cfg) + '/contents/' + FILE, { allow404: true }, tok).then(function (j) {
       if (!j) return null;
-      var env = JSON.parse(atob(String(j.content || '').replace(/\s/g, '')));
-      if (!env || env.app !== 'ShiftRhythm') throw new Error('The sync file in that repository isn’t a ShiftRhythm file.');
+      if (typeof j.content !== 'string' || typeof j.sha !== 'string' || j.content.length > 12 * 1024 * 1024) throw new Error('The sync file in that repository is damaged.');
+      var env; try { env = JSON.parse(atob(j.content.replace(/\s/g, ''))); } catch (e) { env = null; }
+      if (!validEnvelope(env)) throw new Error('The sync file in that repository isn’t a valid ShiftRhythm file.');
       return { sha: j.sha, env: env };
     });
   }
@@ -112,8 +146,8 @@
   }
 
   // ---------- engine ----------
-  var host = null;          // { getState, setState(state), onStatus() }
-  var key = null, salt = null;
+  var host = null;          // { getState, setState(state), clean(raw), onStatus() }
+  var key = null, salt = null, iter = ITER;
   var status = { state: 'off', message: '', lastSync: 0 };
   var timer = null, running = null;
 
@@ -132,23 +166,39 @@
     if (e.name === 'TypeError') return 'Can’t reach GitHub. You’re probably offline; it will sync later.';
     return e.message || 'Sync failed.';
   }
+  function connected(cfg) { return !!(cfg && cfg.owner && (cfg.tokenEnc || cfg.token)); }
+
+  // Unlock with the stored key or a passphrase: recover the key, then the token.
+  function useKey(k, cfg) {
+    key = k;
+    if (cfg.tokenEnc) return openToken(k, cfg.tokenEnc).then(function (t) { token = t; return true; });
+    if (cfg.token) { // older versions kept the token in plain text: encrypt it now
+      token = cfg.token;
+      return sealToken(k, token).then(function (enc) { var c = loadCfg(); c.tokenEnc = enc; delete c.token; saveCfg(c); return true; });
+    }
+    return Promise.resolve(false);
+  }
 
   function init(h) {
     host = h;
     var cfg = loadCfg();
-    if (!cfg.token || !cfg.owner) { setStatus('off'); return; }
+    if (!connected(cfg)) { setStatus('off'); return; }
+    if (cfg.salt) salt = unb64(cfg.salt);
+    iter = Number(cfg.iter) || 310000;
     keyGet().then(function (k) {
-      if (k && k.key && k.salt) { key = k.key; salt = unb64(k.salt); setStatus('idle'); syncNow('open'); }
-      else setStatus('locked', 'Enter your passphrase to unlock sync on this device.');
-    });
+      if (k && k.key) {
+        if (!salt && k.salt) { salt = unb64(k.salt); var c = loadCfg(); c.salt = k.salt; c.iter = iter; saveCfg(c); }
+        return useKey(k.key, loadCfg()).then(function () { setStatus('idle'); return syncNow('open'); });
+      }
+      setStatus('locked', 'Enter your passphrase to unlock sync on this device.');
+    }).catch(function () { setStatus('locked', 'Enter your passphrase to unlock sync on this device.'); });
     root.addEventListener('online', function () { syncNow('online'); });
     root.document.addEventListener('visibilitychange', function () { if (!root.document.hidden) syncNow('focus'); });
   }
 
-  // Called by the app after every local change.
   function changed() {
     var cfg = loadCfg();
-    if (!cfg.token) return;
+    if (!connected(cfg)) return;
     cfg.dirty = true; saveCfg(cfg);
     clearTimeout(timer);
     timer = setTimeout(function () { syncNow('change'); }, 2500);
@@ -156,7 +206,7 @@
 
   function syncNow(reason, retry) {
     var cfg = loadCfg();
-    if (!cfg.token || !key) return Promise.resolve(false);
+    if (!connected(cfg) || !key || !token) return Promise.resolve(false);
     if (running) return running;
     if (root.navigator.onLine === false) { setStatus('offline', 'Offline. Changes will sync when you’re back online.'); return Promise.resolve(false); }
     setStatus('syncing');
@@ -166,14 +216,24 @@
       var remoteChanged = remote.sha !== cfg.lastSha;
       if (!remoteChanged && !cfg.dirty) return true;
       if (remote.env.salt !== b64(salt)) throw new Error('This repository was set up with a different passphrase. Reconnect with that passphrase.');
-      return unseal(key, remote.env).then(function (remoteState) {
-        if (remoteChanged && !cfg.dirty) { host.setState(remoteState); cfg.lastSha = remote.sha; saveCfg(cfg); return true; }
-        var next = remoteChanged ? merge(local, remoteState) : local;
+      return unseal(key, remote.env).then(function (raw) {
+        var remoteState = host.clean(raw);
+        // Rollback protection: never accept a copy older than one this device already saw.
+        if (remoteChanged && cfg.lastRemoteAt && (remoteState.updatedAt || 0) < cfg.lastRemoteAt) {
+          setStatus('error', 'The synced copy on GitHub is older than one this device has already seen, so it was ignored and your copy was uploaded again.');
+          return push(cfg, local, remote.sha).then(function () { return 'rolled-back'; });
+        }
+        if (remoteChanged && !cfg.dirty) {
+          host.setState(remoteState);
+          var c = loadCfg(); c.lastSha = remote.sha; c.lastRemoteAt = Math.max(c.lastRemoteAt || 0, remoteState.updatedAt || 0); saveCfg(c);
+          return true;
+        }
+        var next = remoteChanged ? host.clean(merge(local, remoteState)) : local;
         if (remoteChanged) host.setState(next);
         return push(cfg, next, remote.sha);
       });
-    }).then(function () {
-      setStatus('ok', 'Synced');
+    }).then(function (r) {
+      if (r !== 'rolled-back') setStatus('ok', 'Synced');
       return true;
     }).catch(function (e) {
       running = null;
@@ -184,62 +244,77 @@
     return running;
   }
   function push(cfg, state, sha) {
-    return seal(key, salt, state, cfg.device).then(function (text) { return putFile(cfg, text, sha); }).then(function (newSha) {
-      var c = loadCfg(); c.lastSha = newSha; c.dirty = false; saveCfg(c); return true;
+    return seal(key, salt, state, cfg.device, iter).then(function (text) { return putFile(cfg, text, sha); }).then(function (newSha) {
+      var c = loadCfg(); c.lastSha = newSha; c.dirty = false; c.lastRemoteAt = Math.max(c.lastRemoteAt || 0, state.updatedAt || 0); saveCfg(c); return true;
     });
   }
 
   // First-time set-up on a device.
   function connect(opts) {
     if (!subtle) return Promise.reject(new Error('Encryption needs the app to be opened from https or http://127.0.0.1.'));
-    var cfg = { owner: String(opts.owner || '').trim(), repo: String(opts.repo || '').trim(), token: String(opts.token || '').trim(), device: String(opts.device || 'This device').slice(0, 40) };
+    var cfg = { owner: String(opts.owner || '').trim(), repo: String(opts.repo || '').trim(), device: String(opts.device || 'This device').slice(0, 40), remember: opts.remember !== false };
+    var tok = String(opts.token || '').trim();
     if (!NAME.test(cfg.owner) || !NAME.test(cfg.repo)) return Promise.reject(new Error('Check the GitHub username and repository name.'));
-    if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(cfg.token)) return Promise.reject(new Error('That doesn’t look like a GitHub token. Fine-grained tokens start with github_pat_.'));
-    if (String(opts.pass || '').length < 10) return Promise.reject(new Error('Use a passphrase of at least 10 characters. A short sentence works well.'));
+    if (!/^github_pat_[A-Za-z0-9_]{20,255}$/.test(tok)) {
+      return Promise.reject(new Error(/^ghp_/.test(tok) ? 'That’s a classic token, which can reach your whole account. Please create a fine-grained token (it starts with github_pat_) limited to the sync repository.' : 'That doesn’t look like a fine-grained GitHub token. It should start with github_pat_.'));
+    }
+    if (!opts.pass) return Promise.reject(new Error('Enter your sync passphrase.'));
     setStatus('syncing', 'Checking the repository…');
-    return gh(cfg, repoPath(cfg)).then(function (repo) {
-      if (!repo.private) throw new Error('That repository is public. Make it private first (your data would still be encrypted, but private is safer).');
-      return getFile(cfg);
+    return gh(cfg, repoPath(cfg), {}, tok).then(function (repo) {
+      if (!repo || repo.private !== true) throw new Error('That repository is public. Make it private first.');
+      return getFile(cfg, tok);
     }).then(function (remote) {
       if (remote) {
-        salt = unb64(remote.env.salt);
-        return deriveKey(opts.pass, salt).then(function (k) {
-          return unseal(k, remote.env).then(function (remoteState) {
+        salt = unb64(remote.env.salt); iter = iterOf(remote.env);
+        return deriveKey(opts.pass, salt, iter).then(function (k) {
+          return unseal(k, remote.env).then(function (raw) {
             key = k;
-            var local = host.getState();
-            var next = opts.useRemote || !local.setupDone ? remoteState : merge(local, remoteState);
+            var remoteState = host.clean(raw), local = host.getState();
+            var next = opts.useRemote || !local.setupDone ? remoteState : host.clean(merge(local, remoteState));
             host.setState(next);
-            cfg.lastSha = remote.sha; cfg.dirty = next !== remoteState;
-            return next;
+            cfg.lastSha = remote.sha; cfg.dirty = next !== remoteState; cfg.lastRemoteAt = remoteState.updatedAt || 0;
           }, function () { throw new Error('Wrong passphrase for the data already in that repository.'); });
         });
       }
+      var problem = passProblem(opts.pass);
+      if (problem) throw new Error(problem);
       if (opts.pass !== opts.confirm) throw new Error('The two passphrases don’t match.');
-      salt = rand(16);
-      return deriveKey(opts.pass, salt).then(function (k) { key = k; cfg.dirty = true; });
+      salt = rand(16); iter = ITER;
+      return deriveKey(opts.pass, salt, iter).then(function (k) { key = k; cfg.dirty = true; });
     }).then(function () {
+      token = tok;
+      cfg.salt = b64(salt); cfg.iter = iter;
+      return sealToken(key, tok);
+    }).then(function (enc) {
+      cfg.tokenEnc = enc;
       saveCfg(cfg);
-      return opts.remember === false ? null : keyPut({ key: key, salt: b64(salt) });
-    }).then(function () { return syncNow('connect'); });
+      return opts.remember === false ? null : keyPut({ key: key, salt: cfg.salt });
+    }).then(function () { return syncNow('connect'); })
+      .catch(function (e) { key = null; token = null; setStatus('off'); throw e; });
   }
+  // Unlock on a device that didn't remember the key. Works offline: salt and the encrypted token are local.
   function unlock(pass) {
     var cfg = loadCfg();
     setStatus('syncing', 'Unlocking…');
-    return getFile(cfg).then(function (remote) {
-      if (!remote) throw new Error('No synced data found in the repository yet.');
-      salt = unb64(remote.env.salt);
-      return deriveKey(pass, salt).then(function (k) { return unseal(k, remote.env).then(function () { key = k; return keyPut({ key: k, salt: remote.env.salt }); }); },
-        function () { throw new Error('Wrong passphrase.'); });
-    }).then(function () { return syncNow('unlock'); }).catch(function (e) { setStatus('locked', e.name === 'OperationError' ? 'Wrong passphrase.' : friendly(e)); throw e; });
+    var saltP = cfg.salt ? Promise.resolve({ salt: cfg.salt, iter: Number(cfg.iter) || 310000 })
+      : (cfg.token ? getFile(cfg, cfg.token).then(function (r) { if (!r) throw new Error('No synced data found yet.'); return { salt: r.env.salt, iter: iterOf(r.env) }; }) : Promise.reject(new Error('Reconnect sync on this device.')));
+    return saltP.then(function (si) {
+      salt = unb64(si.salt); iter = si.iter;
+      var c = loadCfg(); c.salt = si.salt; c.iter = si.iter; saveCfg(c);
+      return deriveKey(pass, salt, iter);
+    }).then(function (k) {
+      return useKey(k, loadCfg()).then(function () { return loadCfg().remember === false ? null : keyPut({ key: k, salt: b64(salt) }).catch(function () {}); });
+    }).then(function () { return syncNow('unlock'); })
+      .catch(function (e) { key = null; token = null; var msg = e && e.name === 'OperationError' ? 'Wrong passphrase.' : friendly(e); setStatus('locked', msg); throw new Error(msg); });
   }
   function disconnect() {
-    key = null; salt = null;
+    key = null; salt = null; token = null;
     try { root.localStorage.removeItem(CFG_KEY); } catch (e) {}
     return keyDel().then(function () { setStatus('off'); });
   }
-  function info() { var c = loadCfg(); return { connected: !!c.token, owner: c.owner, repo: c.repo, device: c.device, dirty: !!c.dirty, status: status }; }
+  function info() { var c = loadCfg(); return { connected: connected(c), owner: c.owner, repo: c.repo, device: c.device, dirty: !!c.dirty, status: status }; }
 
-  var EXPORTS = { init: init, changed: changed, syncNow: syncNow, connect: connect, unlock: unlock, disconnect: disconnect, info: info, merge: merge, seal: seal, unseal: unseal, deriveKey: deriveKey, FILE: FILE };
+  var EXPORTS = { init: init, changed: changed, syncNow: syncNow, connect: connect, unlock: unlock, disconnect: disconnect, info: info, merge: merge, seal: seal, unseal: unseal, deriveKey: deriveKey, sealToken: sealToken, openToken: openToken, validEnvelope: validEnvelope, passProblem: passProblem, FILE: FILE, ITER: ITER };
   if (typeof module !== 'undefined' && module.exports) module.exports = EXPORTS;
   else { root.SR = root.SR || {}; root.SR.sync = EXPORTS; }
 })(typeof window !== 'undefined' ? window : globalThis);

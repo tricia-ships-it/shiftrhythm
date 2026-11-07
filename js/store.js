@@ -29,6 +29,10 @@
 
   // ---- validation: imported files are untrusted ----
   var ISO = /^\d{4}-\d{2}-\d{2}$/, HM = /^\d{1,2}:\d{2}$/;
+  // Never let imported or synced data use these as keys or ids (prototype pollution).
+  var RESERVED = /^(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf)$/;
+  function safeId(v, max) { var id = str(v, max || 40).replace(/[^a-zA-Z0-9_-]/g, ''); return RESERVED.test(id) ? '' : id; }
+  var LOGKEY = /^[A-Za-z0-9_:@#.-]{1,120}$/;
   function str(v, max) { return typeof v === 'string' ? v.slice(0, max || 200) : ''; }
   function num(v, lo, hi, dflt) { v = Number(v); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt; }
   function oneOf(v, list, dflt) { return list.indexOf(v) >= 0 ? v : dflt; }
@@ -40,7 +44,7 @@
   function cleanTask(t, oneoff) {
     if (!t || typeof t !== 'object') return null;
     var out = {
-      id: str(t.id, 40).replace(/[^a-zA-Z0-9_-]/g, '') || uid(),
+      id: safeId(t.id) || uid(),
       title: str(t.title, 120).trim(),
       category: str(t.category, 40),
       durationMin: num(t.durationMin, 5, 720, 30),
@@ -51,7 +55,7 @@
       priority: num(t.priority, 1, 3, 2),
       allow: allow(t.allow),
       notes: str(t.notes, 500),
-      role: str(t.role, 40).replace(/[^a-zA-Z0-9_-]/g, '')
+      role: safeId(t.role)
     };
     if (!out.title) return null;
     out.weekdays = Array.isArray(t.weekdays) ? t.weekdays.map(Number).filter(function (x, i, a) { return x >= 0 && x <= 6 && a.indexOf(x) === i; }) : [];
@@ -60,7 +64,7 @@
       out.due = ISO.test(t.due || '') ? t.due : '';
       out.after = ISO.test(t.after || '') ? t.after : '';
       out.deadline = ISO.test(t.deadline || '') ? t.deadline : '';
-      out.project = str(t.project, 40).replace(/[^a-zA-Z0-9_-]/g, '');
+      out.project = safeId(t.project);
       out.projectTitle = str(t.projectTitle, 120);
       out.step = num(t.step, 0, 500, 0);
       out.done = !!t.done;
@@ -74,7 +78,7 @@
   function cleanRole(r) {
     if (!r || typeof r !== 'object') return null;
     var out = {
-      id: str(r.id, 40).replace(/[^a-zA-Z0-9_-]/g, '') || uid(),
+      id: safeId(r.id) || uid(),
       name: str(r.name, 40).trim(),
       type: oneOf(r.type, ['fixed', 'flexible'], 'flexible'),
       persona: str(r.persona, 20).replace(/[^a-z]/g, ''),
@@ -104,7 +108,7 @@
         days[d] = { s: oneOf(x.s, ['win', 'perfect', 'rest', 'frozen', 'missed'], 'rest'), p: num(x.p, 0, 500, 0), n: num(x.n, 0, 500, 0), c: num(x.c, -100, 100, 0) };
       });
       Object.keys(rw.snap || {}).slice(-30).forEach(function (d) {
-        if (ISO.test(d) && Array.isArray(rw.snap[d])) snap[d] = rw.snap[d].filter(function (k) { return typeof k === 'string' && k.length < 120; }).slice(0, 200);
+        if (ISO.test(d) && Array.isArray(rw.snap[d])) snap[d] = rw.snap[d].filter(function (k) { return typeof k === 'string' && LOGKEY.test(k); }).slice(0, 200);
       });
       s.rewards = { start: rw.start, coins: num(rw.coins, 0, 100000, 0), through: ISO.test(rw.through || '') ? rw.through : rw.start, days: days, snap: snap, auto: rw.auto !== false, best: num(rw.best, 0, 100000, 0) };
     }
@@ -142,13 +146,13 @@
     s.oneoffs = (Array.isArray(raw.oneoffs) ? raw.oneoffs : []).map(function (t) { return cleanTask(t, true); }).filter(Boolean).slice(0, 2000);
     Object.keys(raw.log || {}).slice(0, 20000).forEach(function (k) {
       var L = raw.log[k];
-      if (!L || typeof L !== 'object' || k.length > 120) return;
+      if (!L || typeof L !== 'object' || !LOGKEY.test(k) || RESERVED.test(k)) return;
       s.log[k] = {
         status: oneOf(L.status, ['done', 'skipped'], 'done'),
         date: ISO.test(L.date || '') ? L.date : '',
         start: HM.test(L.start || '') ? L.start : '',
         end: HM.test(L.end || '') ? L.end : '',
-        title: str(L.title, 120), taskId: str(L.taskId, 46), when: oneOf(L.when, ['outside', 'during', 'either'], 'outside'), role: str(L.role, 40),
+        title: str(L.title, 120), taskId: str(L.taskId, 46).replace(/[^a-zA-Z0-9_:-]/g, ''), when: oneOf(L.when, ['outside', 'during', 'either'], 'outside'), role: safeId(L.role),
         at: num(L.at, 0, 9e15, 0)
       };
     });
@@ -176,10 +180,11 @@
   // ---- backups ----
   function b64(buf) { var s = ''; new Uint8Array(buf).forEach(function (b) { s += String.fromCharCode(b); }); return btoa(s); }
   function unb64(s) { var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
-  function deriveKey(pass, salt) {
+  var BACKUP_ITER = 600000; // OWASP 2023 guidance for PBKDF2-HMAC-SHA256
+  function deriveKey(pass, salt, iter) {
     var enc = new TextEncoder();
     return root.crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']).then(function (k) {
-      return root.crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: 310000, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      return root.crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter || BACKUP_ITER, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     });
   }
   function exportBackup(state, pass) {
@@ -190,7 +195,7 @@
     return deriveKey(pass, salt).then(function (key) {
       return root.crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(json));
     }).then(function (ct) {
-      return JSON.stringify({ app: 'ShiftRhythm', encrypted: true, kdf: 'PBKDF2-SHA256-310000', salt: b64(salt), iv: b64(iv), data: b64(ct) });
+      return JSON.stringify({ app: 'ShiftRhythm', encrypted: true, kdf: 'PBKDF2-SHA256', iter: BACKUP_ITER, salt: b64(salt), iv: b64(iv), data: b64(ct) });
     });
   }
   function importBackup(text, pass) {
@@ -199,7 +204,9 @@
     if (!outer || outer.app !== 'ShiftRhythm') return Promise.reject(new Error('That file is not a ShiftRhythm backup.'));
     if (!outer.encrypted) return Promise.resolve(clean(outer.data));
     if (!pass) return Promise.reject(new Error('This backup is encrypted. Enter its passphrase.'));
-    return deriveKey(pass, unb64(outer.salt)).then(function (key) {
+    var iter = Number(outer.iter) || 310000; // older backups used 310,000
+    if (iter < 100000 || iter > 5000000 || typeof outer.salt !== 'string' || typeof outer.iv !== 'string' || typeof outer.data !== 'string') return Promise.reject(new Error('That backup file is damaged.'));
+    return deriveKey(pass, unb64(outer.salt), iter).then(function (key) {
       return root.crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(outer.iv) }, key, unb64(outer.data));
     }).then(function (pt) {
       return clean(JSON.parse(new TextDecoder().decode(pt)).data);

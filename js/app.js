@@ -1073,6 +1073,14 @@
 
   // ---------- boot ----------
   function boot() {
+    // Anti-clickjacking: refuse to run inside someone else's frame (the Claude preview is the only allowed host).
+    var framed = false;
+    try { framed = root.top !== root.self; } catch (e) { framed = true; }
+    if (framed && !(root.claude && typeof root.claude.use === 'function')) {
+      doc.body.replaceChildren(h('main', { class: 'wrap' }, h('section', { class: 'card' }, h('h2', { text: 'Open ShiftRhythm directly' }),
+        h('p', { text: 'For your safety, ShiftRhythm doesn\u2019t run inside other websites. Open it in its own tab instead.' }))));
+      return;
+    }
     root.SR.capture.init();
     if (root.SR.sync && !(root.claude && typeof root.claude.use === 'function')) {
       root.SR.sync.init({
@@ -1082,6 +1090,7 @@
           state = St.clean(s); state.setupDone = state.setupDone || keepSetup;
           St.save(state); replan(); render();
         },
+        clean: function (raw) { return St.clean(raw); },
         onStatus: function () { var el = doc.getElementById('syncStatus'); if (el) el.textContent = syncStatusText(); }
       });
     }

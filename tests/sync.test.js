@@ -37,3 +37,36 @@ test('merge keeps work finished on either device and new tasks from both', () =>
   assert.equal(m.shifts['2026-11-20'], 'day', 'newer roster wins');
   assert.equal(m.updatedAt, 200);
 });
+
+test('GitHub token is encrypted at rest and bound to its purpose', async () => {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await Y.deriveKey('a long and unusual passphrase', salt, 100000);
+  const enc = await Y.sealToken(key, 'github_pat_SECRET123456789012345');
+  assert.ok(!JSON.stringify(enc).includes('SECRET'));
+  assert.equal(await Y.openToken(key, enc), 'github_pat_SECRET123456789012345');
+  // a token blob can't be swapped in as plan data (different associated data)
+  await assert.rejects(Y.unseal(key, { iv: enc.iv, data: enc.ct }));
+});
+
+test('synced files are checked before use', () => {
+  assert.ok(!Y.validEnvelope(null));
+  assert.ok(!Y.validEnvelope({ app: 'ShiftRhythm', v: 1, salt: 'AAAA', iv: 'AAAA', data: 'x' }), 'wrong salt/iv sizes');
+  assert.ok(!Y.validEnvelope({ app: 'ShiftRhythm', v: 1, iter: 10, salt: Buffer.alloc(16).toString('base64'), iv: Buffer.alloc(12).toString('base64'), data: 'x' }), 'iteration count too low');
+  assert.ok(Y.validEnvelope({ app: 'ShiftRhythm', v: 1, iter: 600000, salt: Buffer.alloc(16).toString('base64'), iv: Buffer.alloc(12).toString('base64'), data: 'x' }));
+});
+
+test('weak passphrases are refused for a new sync space', () => {
+  assert.ok(Y.passProblem('short'));
+  assert.ok(Y.passProblem('123456789012345'));
+  assert.ok(Y.passProblem('aaaaaaaaaaaaaaa'));
+  assert.ok(Y.passProblem('Password1234567'));
+  assert.equal(Y.passProblem('choir songs at dawn'), '');
+  assert.equal(Y.ITER, 600000);
+});
+
+test('merge ignores inherited keys', () => {
+  const evil = JSON.parse('{"updatedAt":1,"log":{"__proto__":{"status":"done"}},"recurring":[],"oneoffs":[],"roles":[]}');
+  const m = Y.merge({ updatedAt: 2, log: {}, recurring: [], oneoffs: [], roles: [] }, evil);
+  assert.equal(Object.getPrototypeOf(m.log), Object.prototype);
+  assert.equal(({}).status, undefined);
+});
