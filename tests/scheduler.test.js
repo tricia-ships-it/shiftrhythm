@@ -223,3 +223,22 @@ test('routine continues after an item that was already ticked off', () => {
   const bf = p.blocks.find(b => b.title === 'Breakfast' && b.date === '2026-11-14');
   assert.equal(bf.startTime, '09:50');
 });
+
+test('regular schedule: work Mon–Fri 9–5, weekends free, no recovery days', () => {
+  const p = S.buildPlan({ settings: { mode: 'regular', workLabel: 'School', workDays: [1, 2, 3, 4, 5], shifts: { day: { start: '09:00', end: '17:00' } }, commuteMin: 30, prepMin: 60, wakeTime: '07:00' },
+    shifts: { '2026-11-11': 'off' }, recurring: [{ id: 'g', title: 'Gym', durationMin: 45, per: 'week', times: 2, keepWhole: true }], oneoffs: [], log: {} }, { today: '2026-11-09', days: 7 });
+  const school = p.blocks.filter(b => b.kind === 'shift').map(b => b.date);
+  assert.deepEqual(school, ['2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13'], 'Wednesday marked as a day off');
+  assert.equal(p.blocks.find(b => b.kind === 'shift').title, 'School');
+  assert.equal(p.blocks.find(b => b.kind === 'commute').title, 'Travel to school');
+  assert.equal(p.days.find(d => d.date === '2026-11-10').wake, '07:30');
+  assert.equal(p.days.find(d => d.date === '2026-11-14').kind, 'off', 'Saturday is a normal day off');
+  assert.equal(p.days.find(d => d.date === '2026-11-14').wake, '07:00');
+});
+
+test('free mode: every day is your own', () => {
+  const p = S.buildPlan({ settings: { mode: 'free', wakeTime: '07:30' }, shifts: {}, recurring: [{ id: 'r', title: 'Read', durationMin: 30, per: 'day', times: 1 }], oneoffs: [], log: {} }, { today: '2026-11-09', days: 7 });
+  assert.equal(p.blocks.filter(b => b.kind === 'shift').length, 0);
+  assert.equal(p.blocks.filter(b => b.title === 'Read').length, 7);
+  assert.ok(p.days.every(d => d.kind === 'off'));
+});

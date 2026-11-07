@@ -94,6 +94,9 @@
     ['wakeAfterDayShift', 'bedtime', 'postNightSleep', 'postNightWake'].forEach(function (k) { st[k] = HM.test(r[k] || '') ? r[k] : D[k]; });
     st.rosterName = str(r.rosterName, 60);
     st.name = str(r.name, 40);
+    st.mode = oneOf(r.mode, ['shifts', 'regular', 'free'], 'shifts');
+    st.workLabel = str(r.workLabel, 30).trim() || 'Work';
+    st.workDays = Array.isArray(r.workDays) ? r.workDays.map(Number).filter(function (x, i, a) { return x >= 0 && x <= 6 && a.indexOf(x) === i; }) : D.workDays.slice();
     st.theme = oneOf(r.theme, ['auto', 'light', 'dark'], 'auto');
     st.sleepHours = num(r.sleepHours, 3, 12, D.sleepHours);
     st.volume = num(r.volume, 0, 1, D.volume);

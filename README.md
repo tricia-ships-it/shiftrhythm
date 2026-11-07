@@ -1,8 +1,12 @@
 # ShiftRhythm
 
-A private, offline planner for people who work **rotating day and night shifts**.
+A private, offline planner that fits **your** week, whatever it looks like:
 
-Most planners assume you wake at 7 and work 9 to 5. ShiftRhythm starts from your rota instead. You enter your shifts and the things you want to do regularly (workouts, practice, rehearsals, side projects, admin). It then builds each day and week around your work, your sleep and your attention span, and plays a soft chime when it's time to switch tasks.
+- **Shift workers:** rotating day and night shifts, a new roster each month.
+- **Regular schedules:** a 9-to-5, school, lectures, any set days and hours (you name it).
+- **Your time is your own:** freelancing, at home, retired, between jobs, or simply planning your life.
+
+You tell it the things you want to do (workouts, study, practice, chores, side projects, family time) and what's coming up. It builds each day and week around your commitments, your sleep and your attention span, breaks big jobs into steps before their deadlines, plays a soft chime when it's time to switch, and rewards the days you show up with streaks and coins.
 
 Everything runs on your own device. There's no account, server, analytics or network access.
 

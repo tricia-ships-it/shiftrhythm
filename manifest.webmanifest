@@ -1,7 +1,7 @@
 {
   "name": "ShiftRhythm",
   "short_name": "ShiftRhythm",
-  "description": "A private, offline planner that schedules your routines around rotating day and night shifts.",
+  "description": "A private, offline planner that fits your week: shifts, a 9-to-5, school, or no fixed schedule at all.",
   "start_url": "./index.html#today",
   "scope": "./",
   "display": "standalone",

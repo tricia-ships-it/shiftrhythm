@@ -312,3 +312,10 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; 
 .dotday.s-rest .sym { background: var(--surface2); border: 1.5px dashed var(--line); }
 .dotday.s-today .sym { background: transparent; border: 2px solid var(--accent); }
 .rules { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+/* "what does your week look like" */
+.modes { display: grid; gap: 8px; }
+.mode-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface2); cursor: pointer; color: var(--ink); }
+.mode-opt:hover { background: var(--hover); }
+.mode-opt.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.mode-opt strong { font-weight: 900; }

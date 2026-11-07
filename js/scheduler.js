@@ -72,6 +72,9 @@
 
   // ---------- defaults ----------
   var DEFAULT_SETTINGS = {
+    mode: 'shifts',          // 'shifts' (rotating day/night), 'regular' (set days, e.g. Mon–Fri 9–5), 'free' (no fixed commitments)
+    workLabel: 'Work',       // what a regular commitment is called: Work, School, Lectures...
+    workDays: [1, 2, 3, 4, 5],
     shifts: { day: { start: '07:00', end: '19:00' }, night: { start: '19:00', end: '07:00' } },
     commuteMin: 45,        // travel each way
     prepMin: 60,           // getting ready between waking and leaving
@@ -116,6 +119,9 @@
       night: Object.assign({}, DEFAULT_SETTINGS.shifts.night, (s.shifts || {}).night || {})
     };
     out.sleepMin = Math.round(Number(out.sleepHours) * 60) || 480;
+    out.mode = ['shifts', 'regular', 'free'].indexOf(out.mode) >= 0 ? out.mode : 'shifts';
+    out.workLabel = String(out.workLabel || 'Work').slice(0, 30) || 'Work';
+    out.workDays = Array.isArray(out.workDays) ? out.workDays : DEFAULT_SETTINGS.workDays;
     ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'shiftEndBufferMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'capRecoveryDay', 'headsUpMin'].forEach(function (k) {
       out[k] = Math.max(0, Math.round(Number(out[k]) || 0));
     });
@@ -150,7 +156,13 @@
 
     var shifts = state.shifts || {};
     var log = state.log || {};
-    function typeOf(d) { var t = shifts[d]; return t === 'day' || t === 'night' ? t : 'off'; }
+    // An explicit entry wins (a holiday, an extra day); otherwise a regular schedule follows its weekdays.
+    function typeOf(d) {
+      var t = shifts[d];
+      if (t === 'day' || t === 'night' || t === 'off') return t;
+      return S.mode === 'regular' && S.workDays.indexOf(weekday(d)) >= 0 ? 'day' : 'off';
+    }
+    var shiftsMode = S.mode === 'shifts', wl = S.workLabel.toLowerCase();
     function idx(d) { return diffDays(base, d); }
     function abs(d, m) { return idx(d) * DAY + m; }
     function dateOfAbs(a) { return addDays(base, Math.floor(a / DAY)); }
@@ -164,10 +176,10 @@
       var sh = S.shifts[t];
       var s = abs(d, hm(sh.start)), e = abs(d, hm(sh.end));
       if (e <= s) e += DAY;
-      structure.push({ s: s, e: e, kind: 'shift', title: t === 'day' ? 'Day shift' : 'Night shift', shiftType: t });
-      if (S.prepMin > 0) structure.push({ s: s - S.commuteMin - S.prepMin, e: s - S.commuteMin, kind: 'prep', title: 'Get ready for ' + (t === 'day' ? 'day' : 'night') + ' shift' });
+      structure.push({ s: s, e: e, kind: 'shift', title: !shiftsMode && t === 'day' ? S.workLabel : t === 'day' ? 'Day shift' : 'Night shift', shiftType: t });
+      if (S.prepMin > 0) structure.push({ s: s - S.commuteMin - S.prepMin, e: s - S.commuteMin, kind: 'prep', title: 'Get ready for ' + (!shiftsMode && t === 'day' ? wl : t === 'day' ? 'day shift' : 'night shift') });
       if (S.commuteMin > 0) {
-        structure.push({ s: s - S.commuteMin, e: s, kind: 'commute', title: 'Travel to work' });
+        structure.push({ s: s - S.commuteMin, e: s, kind: 'commute', title: 'Travel to ' + (shiftsMode ? 'work' : wl) });
         structure.push({ s: e, e: e + S.commuteMin, kind: 'commute', title: 'Travel home' });
       }
       if (t === 'night') {
@@ -194,7 +206,7 @@
       var nx = addDays(d, 1);
       var wake;
       if (typeOf(nx) === 'day') wake = abs(nx, hm(S.shifts.day.start)) - S.commuteMin - S.prepMin;
-      else if (typeOf(d) === 'day') wake = abs(nx, hm(S.wakeAfterDayShift));
+      else if (shiftsMode && typeOf(d) === 'day') wake = abs(nx, hm(S.wakeAfterDayShift));
       else wake = abs(nx, hm(S.wakeTime));
       var bt = hm(S.bedtime);
       var bed = abs(d, bt) + (bt < 12 * 60 ? DAY : 0);     // a 00:30 bedtime belongs to the next morning
@@ -254,7 +266,7 @@
 
     // 3. Expand tasks into instances.
     // Off days come in two kinds: a normal off day, and the first off day after a shift (recovery).
-    function kindOf(d) { var t = typeOf(d); return t !== 'off' ? t : typeOf(addDays(d, -1)) === 'off' ? 'off' : 'recovery'; }
+    function kindOf(d) { var t = typeOf(d); return t !== 'off' ? t : (!shiftsMode || typeOf(addDays(d, -1)) === 'off') ? 'off' : 'recovery'; }
     function capFor(d) { var k = kindOf(d); return k === 'off' ? S.capOffDay : k === 'recovery' ? S.capRecoveryDay : S.capShiftDay; }
     function eligible(task, d) {
       var t = typeOf(d), k = kindOf(d), al = task.allow || {};

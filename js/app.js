@@ -43,6 +43,19 @@
   }
   function dur(m) { m = Math.round(m); if (m < 60) return m + ' min'; var hh = Math.floor(m / 60), mm = m % 60; return hh + ' h' + (mm ? ' ' + mm + ' min' : ''); }
   var SHIFT_LABEL = { day: 'Day shift', night: 'Night shift', off: 'Off day' };
+  function mode() { return state.settings.mode || 'shifts'; }
+  function shiftsMode() { return mode() === 'shifts'; }
+  function workLabel() { return state.settings.workLabel || 'Work'; }
+  function workWord() { return shiftsMode() ? 'shift' : workLabel().toLowerCase(); }   // "during my shift" / "during work" / "during school"
+  function dayTypeLabel(type, kind) {
+    if (shiftsMode()) return kind === 'recovery' ? 'Off day after a shift' : SHIFT_LABEL[type];
+    if (type === 'day' || type === 'night') return workLabel() + ' day';
+    return mode() === 'regular' ? 'Day off' : 'Free day';
+  }
+  function shortType(type, kind) {
+    if (shiftsMode()) return kind === 'recovery' ? 'Off \u00b7 after shift' : SHORT[type];
+    return type === 'off' ? (mode() === 'regular' ? 'Off' : 'Free') : workLabel();
+  }
   var SHORT = { day: 'Day', night: 'Night', off: 'Off' };
   function save() {
     state.updatedAt = Date.now();
@@ -214,14 +227,16 @@
 
   function render() {
     applyTheme();
+    var calLink = doc.querySelector('nav.tabs a[href="#shifts"]');
+    if (calLink && calLink.lastChild && calLink.lastChild.nodeType === 3) calLink.lastChild.textContent = shiftsMode() ? 'Shifts' : 'Calendar';
     var main = doc.getElementById('main');
     main.replaceChildren();
     doc.querySelectorAll('nav.tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + route() ? 'page' : 'false'); });
     var t = todayIso();
-    var type = (state.shifts[t]) || 'off';
+    var type = plan && plan.days[0] ? plan.days[0].type : ((state.shifts[t]) || 'off');
     var chip = doc.getElementById('todayChip');
     var kind = plan && plan.days[0] ? plan.days[0].kind : type;
-    chip.className = 'chip ' + type; chip.textContent = 'Today: ' + (kind === 'recovery' ? 'Off day after a shift' : SHIFT_LABEL[type]);
+    chip.className = 'chip ' + type; chip.textContent = 'Today: ' + dayTypeLabel(type, kind);
 
     if (!state.setupDone) { doc.getElementById('nav').hidden = true; main.append(renderWizard()); return; }
     doc.getElementById('nav').hidden = false;
@@ -256,7 +271,7 @@
     if (b.kind === 'task') {
       sub.push(dur(b.minutes));
       if (b.part) sub.push('part ' + b.part);
-      if (b.during) sub.push('during shift');
+      if (b.during) sub.push('during ' + workWord());
       if (b.done) sub.push('done');
     } else if (b.kind !== 'break') sub.push(dur(b.minutes));
     var badges = [];
@@ -307,8 +322,10 @@
     var hr = new Date().getHours();
     var hello = (hr < 5 ? 'Still up' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (state.settings.name ? ', ' + state.settings.name : '');
     var shiftB = blocks.filter(function (b) { return b.kind === 'shift' && b.date === t; })[0];
-    var mood = kind === 'day' ? 'Day shift. You\u2019ve got this.' : kind === 'night' ? 'Night shift tonight. Rest first.' : kind === 'recovery' ? 'Recovery day. Go gently.' : total ? 'A free day, made for your own things.' : 'A free day. Enjoy it.';
-    var pills = [h('span', { class: 'pill', text: kind === 'recovery' ? 'Off · after shift' : SHIFT_LABEL[day0.type || 'off'] })];
+    var mood = kind === 'night' ? 'Night shift tonight. Rest first.' : kind === 'recovery' ? 'Recovery day. Go gently.'
+      : kind === 'day' ? (shiftsMode() ? 'Day shift. You\u2019ve got this.' : workLabel() + ' day. One step at a time.')
+      : total ? (mode() === 'free' ? 'Your day, your plan.' : 'A free day, made for your own things.') : 'A free day. Enjoy it.';
+    var pills = [h('span', { class: 'pill', text: dayTypeLabel(day0.type || 'off', kind) })];
     if (shiftB) pills.push(h('span', { class: 'pill', text: shiftB.startTime + '–' + shiftB.endTime }));
     if (day0.wake) pills.push(h('span', { class: 'pill', text: 'Up at ' + day0.wake }));
     var rs = Rw.status(state, plan, t);
@@ -389,7 +406,7 @@
     var t = todayIso();
     plan.days.forEach(function (d) {
       var card = h('section', { class: 'card dayc ' + d.kind + (d.date === t ? ' today' : '') }, h('div', { class: 'band', 'aria-hidden': 'true' }));
-      card.append(h('div', { class: 'spread' }, h('strong', { text: dayLabel(d.date) }), h('span', { class: 'chip ' + d.type, text: d.kind === 'recovery' ? 'Off \u00b7 after shift' : SHORT[d.type] })));
+      card.append(h('div', { class: 'spread' }, h('strong', { text: dayLabel(d.date) }), h('span', { class: 'chip ' + d.type, text: shortType(d.type, d.kind) })));
       var items = plan.blocks.filter(function (b) { return b.date === d.date && b.kind !== 'break'; });
       if (!items.length) card.append(h('div', { class: 'empty', text: 'Nothing planned' }));
       items.forEach(function (b) {
@@ -414,9 +431,10 @@
     if (!oneoff) bits.unshift(t.times + '× per ' + t.per);
     if (oneoff && t.date) bits.push('on ' + dayLabel(t.date));
     if (oneoff && t.due) bits.push('due ' + dayLabel(t.due));
-    bits.push(t.when === 'during' ? 'during shift' : t.when === 'either' ? 'during or outside shift' : 'outside shift');
+    if (mode() !== 'free' || t.when !== 'outside') bits.push(t.when === 'during' ? 'during ' + workWord() : t.when === 'either' ? 'during or outside ' + workWord() : 'outside ' + workWord());
     var rules = [];
-    var NAMES = { off: 'normal off days', recovery: 'off days after a shift', day: 'day-shift days', night: 'night-shift days' };
+    var NAMES = shiftsMode() ? { off: 'normal off days', recovery: 'off days after a shift', day: 'day-shift days', night: 'night-shift days' }
+      : { off: 'days off', recovery: 'days off', day: workLabel().toLowerCase() + ' days', night: 'night-shift days' };
     ['off', 'recovery', 'day', 'night'].forEach(function (k) {
       var v = t.allow[k];
       if (v === 'no') rules.push('not on ' + NAMES[k]);
@@ -458,7 +476,7 @@
           h('div', { class: 'row' },
             h('button', { class: 'btn', type: 'button', onclick: addExamples }, 'Add examples'),
             h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add recurring task'))),
-        h('p', { class: 'small muted', text: 'These repeat every day, week or month. ShiftRhythm places them around your shifts automatically.' }),
+        h('p', { class: 'small muted', text: 'These repeat every day, week or month. ShiftRhythm fits them around ' + (shiftsMode() ? 'your shifts' : mode() === 'regular' ? 'your ' + workLabel().toLowerCase() + ' days' : 'your day') + ' and your sleep automatically.' }),
         rec),
       h('section', { class: 'card', 'aria-labelledby': 'oneH' },
         h('div', { class: 'spread' }, h('h2', { id: 'oneH', text: 'One-off tasks' }),
@@ -485,6 +503,7 @@
     change(function () {
       EXAMPLES.forEach(function (e) {
         if (state.recurring.some(function (r) { return r.title === e.title; })) return;
+        if (e.when === 'during' && mode() === 'free') return;
         state.recurring.push(St.cleanTask(Object.assign({ id: St.uid() }, e), false));
       });
     }, 'Examples added. Edit or pause any of them.');
@@ -505,8 +524,8 @@
       f.due = h('input', { type: 'date', id: 'edDue', value: t.due || '' });
     }
     f.when = h('select', { id: 'edWhen' },
-      h('option', { value: 'outside', selected: t.when === 'outside' }, 'Outside my shift (personal time)'),
-      h('option', { value: 'during', selected: t.when === 'during' }, 'During my shift (work task)'),
+      h('option', { value: 'outside', selected: t.when === 'outside' }, mode() === 'free' ? 'In my own time' : 'Outside ' + (shiftsMode() ? 'my shift' : workWord()) + ' (personal time)'),
+      h('option', { value: 'during', selected: t.when === 'during' }, 'During ' + (shiftsMode() ? 'my shift' : workWord()) + ' (' + (workWord() === 'school' ? 'school' : 'work') + ' task)'),
       h('option', { value: 'either', selected: t.when === 'either' }, 'Either'));
     function ruleSel(k, label, opts) {
       return h('label', { class: 'field' }, h('span', {}, label),
@@ -527,10 +546,11 @@
       if (!oneoff) { t.times = Number(f.times.value) || 1; t.per = f.per.value; }
       else { t.date = f.date.value; t.due = f.due.value; }
       t.when = f.when.value;
-      t.allow = { off: f.allow_off.value, recovery: f.allow_recovery.value, day: f.allow_day.value, night: f.allow_night.value };
+      var pick = function (k, d) { return f['allow_' + k] ? f['allow_' + k].value : d; };
+      t.allow = { off: pick('off', 'yes'), recovery: pick('recovery', pick('off', 'yes')), day: pick('day', t.allow.day || 'yes'), night: pick('night', t.allow.night || 'yes') };
       t.timeOfDay = f.tod.value; t.fixedTime = f.fixed.value; t.keepWhole = f.whole.checked; t.priority = Number(f.prio.value);
       var clean = St.cleanTask(t, oneoff);
-      if (t.when === 'during' && clean.allow.day === 'no' && clean.allow.night === 'no') { err.textContent = 'A work task needs at least one kind of shift allowed.'; return; }
+      if (t.when === 'during' && clean.allow.day === 'no' && clean.allow.night === 'no') { err.textContent = 'A task done during ' + workWord() + ' needs ' + workWord() + ' days allowed.'; return; }
       close();
       change(function () {
         var list = oneoff ? state.oneoffs : state.recurring;
@@ -557,10 +577,10 @@
       h('label', { class: 'field' }, h('span', {}, 'Where it happens'), f.when),
       h('h3', { text: 'Allowed on' }),
       h('div', { class: 'fields' },
-        ruleSel('off', 'Normal off days', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
-        ruleSel('recovery', 'Off day right after a shift', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
-        ruleSel('day', 'Day-shift days', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
-        ruleSel('night', 'Night-shift days', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']])),
+        ruleSel('off', shiftsMode() ? 'Normal off days' : mode() === 'regular' ? 'Days off' : 'Any day', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
+        shiftsMode() ? ruleSel('recovery', 'Off day right after a shift', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]) : null,
+        mode() === 'free' ? null : ruleSel('day', shiftsMode() ? 'Day-shift days' : workLabel() + ' days', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
+        shiftsMode() ? ruleSel('night', 'Night-shift days', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]) : null),
       h('div', { class: 'fields' },
         h('label', { class: 'field' }, h('span', {}, 'Best time of day'), f.tod),
         h('label', { class: 'field' }, h('span', {}, 'Fixed start time (optional)'), f.fixed),
@@ -579,12 +599,14 @@
   }
 
   // ---------- shifts ----------
+  function defaultType(d) { return mode() === 'regular' && (state.settings.workDays || []).indexOf(Sch.weekday(d)) >= 0 ? 'day' : 'off'; }
+  function typeOn(d) { var t = state.shifts[d]; return t === 'day' || t === 'night' || t === 'off' ? t : defaultType(d); }
   function cycle(d) {
-    var order = ['off', 'day', 'night'];
-    var cur = state.shifts[d] || 'off';
+    var order = shiftsMode() ? ['off', 'day', 'night'] : ['off', 'day'];
+    var cur = typeOn(d);
     change(function () {
-      var nx = order[(order.indexOf(cur) + 1) % 3];
-      if (nx === 'off') delete state.shifts[d]; else state.shifts[d] = nx;
+      var nx = order[(order.indexOf(cur) + 1) % order.length];
+      if (nx === defaultType(d)) delete state.shifts[d]; else state.shifts[d] = nx;
     });
   }
   function renderPatternTool(onApplied) {
@@ -628,11 +650,11 @@
     for (var i = 0; i < 7; i++) cal.append(h('div', { class: 'hd', text: dayLabel(Sch.addDays(gridStart, i), { weekday: 'short' }) }));
     for (i = 0; i < 42; i++) {
       (function (d) {
-        var type = state.shifts[d] || 'off';
+        var type = typeOn(d);
         cal.append(h('button', {
           type: 'button', class: type + (d.slice(0, 7) !== ui.calMonth ? ' out' : '') + (d === t ? ' today' : ''),
-          'aria-label': dayLabel(d, { weekday: 'long', day: 'numeric', month: 'long' }) + ': ' + SHIFT_LABEL[type], onclick: function () { cycle(d); }
-        }, h('span', { class: 'n', text: String(Number(d.slice(8))) }), h('span', { class: 's', text: type === 'off' ? 'Off' : SHORT[type] })));
+          'aria-label': dayLabel(d, { weekday: 'long', day: 'numeric', month: 'long' }) + ': ' + dayTypeLabel(type), onclick: function () { cycle(d); }
+        }, h('span', { class: 'n', text: String(Number(d.slice(8))) }), h('span', { class: 's', text: shortType(type) })));
       })(Sch.addDays(gridStart, i));
     }
     function shiftMonth(n) { var p = ui.calMonth.split('-').map(Number); var d = new Date(p[0], p[1] - 1 + n, 1); ui.calMonth = d.getFullYear() + '-' + pad(d.getMonth() + 1); render(); }
@@ -641,23 +663,63 @@
         h('div', { class: 'spread' },
           h('h2', { id: 'calH', text: dayLabel(first, { month: 'long', year: 'numeric' }) }),
           h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(-1); } }, '‹ Prev'), h('button', { class: 'btn small', type: 'button', onclick: function () { shiftMonth(1); } }, 'Next ›'))),
-        h('p', { class: 'small muted', text: 'Tap a day to switch Off → Day → Night.' }),
+        h('p', { class: 'small muted', text: shiftsMode() ? 'Tap a day to switch Off \u2192 Day \u2192 Night.' : 'Tap a day to switch between ' + workLabel().toLowerCase() + ' and a day off: holidays, leave, an extra day.' }),
         cal),
       h('div', { class: 'stack' },
-        h('section', { class: 'card', 'aria-labelledby': 'rosH' }, h('h2', { id: 'rosH', text: 'Import this month\u2019s roster' }), root.SR.capture.renderRosterImport()),
-        h('section', { class: 'card', 'aria-labelledby': 'patH' }, h('details', {}, h('summary', { id: 'patH', text: 'Or fill from a repeating rotation' }), renderPatternTool())),
-        h('section', { class: 'card', 'aria-labelledby': 'hrsH' }, h('h2', { id: 'hrsH', text: 'Shift hours' }), shiftHoursFields())));
+        h('section', { class: 'card', 'aria-labelledby': 'wkH' }, h('h2', { id: 'wkH', text: 'Your week' }), renderModePicker()),
+        shiftsMode() ? h('section', { class: 'card', 'aria-labelledby': 'rosH' }, h('h2', { id: 'rosH', text: 'Import this month\u2019s roster' }), root.SR.capture.renderRosterImport()) : null,
+        shiftsMode() ? h('section', { class: 'card', 'aria-labelledby': 'patH' }, h('details', {}, h('summary', { id: 'patH', text: 'Or fill from a repeating rotation' }), renderPatternTool())) : null));
   }
   function shiftHoursFields() {
     var s = state.settings.shifts;
     function tf(id, k, side) {
-      return h('input', { type: 'time', id: id, value: s[k][side], onchange: function (e) { var v = e.target.value; if (v) change(function () { state.settings.shifts[k][side] = v; }, 'Shift hours saved.'); } });
+      return h('input', { type: 'time', id: id, value: s[k][side], onchange: function (e) { var v = e.target.value; if (v) change(function () { state.settings.shifts[k][side] = v; }, 'Hours saved.'); } });
+    }
+    if (!shiftsMode()) {
+      return h('div', { class: 'fields' },
+        h('label', { class: 'field' }, h('span', {}, workLabel() + ' starts'), tf('dS', 'day', 'start')),
+        h('label', { class: 'field' }, h('span', {}, workLabel() + ' ends'), tf('dE', 'day', 'end')));
     }
     return h('div', { class: 'fields' },
       h('label', { class: 'field' }, h('span', {}, 'Day shift starts'), tf('dS', 'day', 'start')),
       h('label', { class: 'field' }, h('span', {}, 'Day shift ends'), tf('dE', 'day', 'end')),
       h('label', { class: 'field' }, h('span', {}, 'Night shift starts'), tf('nS', 'night', 'start')),
       h('label', { class: 'field' }, h('span', {}, 'Night shift ends'), tf('nE', 'night', 'end')));
+  }
+
+  var MODES = [
+    ['shifts', 'I work shifts', 'Rotating day and night shifts, a new roster each month.'],
+    ['regular', 'I have a regular schedule', 'Work, school or classes on set days and hours, like Monday to Friday, 9 to 5.'],
+    ['free', 'My time is my own', 'Not working right now, freelancing, retired, at home or between jobs.']
+  ];
+  function renderModePicker() {
+    var box = h('div', { class: 'stack' });
+    var opts = h('div', { class: 'modes', role: 'radiogroup', 'aria-label': 'What your week looks like' });
+    MODES.forEach(function (m) {
+      opts.append(h('button', { type: 'button', class: 'mode-opt' + (mode() === m[0] ? ' on' : ''), role: 'radio', 'aria-checked': String(mode() === m[0]),
+        onclick: function () {
+          change(function () {
+            state.settings.mode = m[0];
+            if (m[0] === 'regular' && state.settings.shifts.day.start === '07:00' && state.settings.shifts.day.end === '19:00') state.settings.shifts.day = { start: '09:00', end: '17:00' };
+            if (m[0] === 'shifts' && state.settings.shifts.day.start === '09:00' && state.settings.shifts.day.end === '17:00') state.settings.shifts.day = { start: '07:00', end: '19:00' };
+          });
+        } }, h('strong', { text: m[1] }), h('span', { class: 'small muted', text: m[2] })));
+    });
+    box.append(opts);
+    if (mode() === 'regular') {
+      var label = h('input', { type: 'text', id: 'workLabel', value: workLabel(), placeholder: 'Work, School, Lectures\u2026', onchange: function (e) { var v = e.target.value.trim().slice(0, 30) || 'Work'; change(function () { state.settings.workLabel = v; }); } });
+      var days = h('div', { class: 'row' }, [1, 2, 3, 4, 5, 6, 0].map(function (d) {
+        var cb = h('input', { type: 'checkbox', checked: (state.settings.workDays || []).indexOf(d) >= 0, onchange: function () {
+          change(function () { var w = (state.settings.workDays || []).filter(function (x) { return x !== d; }); if (cb.checked) w.push(d); state.settings.workDays = w; });
+        } });
+        return h('label', { class: 'check' }, cb, dayLabel(Sch.addDays('2026-11-08', d), { weekday: 'short' }));
+      }));
+      box.append(h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Call it'), label)),
+        h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'On these days'), days), shiftHoursFields());
+    } else if (mode() === 'shifts') box.append(shiftHoursFields());
+    else box.append(h('p', { class: 'small muted', text: 'No fixed commitments: every day is planned around your sleep and the things you want to do. If something regular comes up, like a part-time job or classes, switch to a regular schedule, or tap single days on the calendar.' }));
+    box.append(h('div', { class: 'fields' }, mode() === 'free' ? null : numField('wCommute', 'Travel each way', 'commuteMin', 0, 240, 5, 'min')));
+    return box;
   }
 
   // ---------- settings ----------
@@ -718,23 +780,23 @@
           rhythmPicker()),
         h('section', { class: 'card' }, h('h2', { text: 'Sleep, travel and limits' }),
           h('div', { class: 'fields' },
-            h('label', { class: 'field' }, h('span', {}, 'Wake on normal off days'), wake),
-            timeField('wakeAD', 'Wake after a day shift', 'wakeAfterDayShift'),
+            h('label', { class: 'field' }, h('span', {}, mode() === 'free' ? 'Wake time' : shiftsMode() ? 'Wake on normal off days' : 'Wake on days off'), wake),
+            shiftsMode() ? timeField('wakeAD', 'Wake after a day shift', 'wakeAfterDayShift') : null,
             timeField('bed', 'Usual bedtime', 'bedtime'),
-            timeField('pnS', 'After a night shift, rest from', 'postNightSleep'),
-            timeField('pnE', '\u2026until', 'postNightWake'),
-            numField('sleepH', 'Least sleep before a shift', 'sleepHours', 4, 12, 0.5, 'hours'),
+            shiftsMode() ? timeField('pnS', 'After a night shift, rest from', 'postNightSleep') : null,
+            shiftsMode() ? timeField('pnE', '\u2026until', 'postNightWake') : null,
+            numField('sleepH', mode() === 'free' ? 'Least sleep' : 'Least sleep before ' + workWord(), 'sleepHours', 4, 12, 0.5, 'hours'),
             numField('prep', 'Getting ready', 'prepMin', 0, 180, 5, 'min'),
             numField('commute', 'Travel each way', 'commuteMin', 0, 240, 5, 'min'),
-            numField('nap', 'Nap before night shifts', 'napMin', 0, 240, 15, 'min'),
-            numField('handover', 'Settling in at shift start', 'handoverMin', 0, 180, 5, 'min'),
-            numField('endBuf', 'Handover at shift end', 'shiftEndBufferMin', 0, 180, 5, 'min'),
+            shiftsMode() ? numField('nap', 'Nap before night shifts', 'napMin', 0, 240, 15, 'min') : null,
+            mode() === 'free' ? null : numField('handover', 'Settling in at the start of ' + workWord(), 'handoverMin', 0, 180, 5, 'min'),
+            mode() === 'free' ? null : numField('endBuf', 'Wrap-up at the end of ' + workWord(), 'shiftEndBufferMin', 0, 180, 5, 'min'),
             numField('capOff', 'Max task time, off days', 'capOffDay', 0, 960, 15, 'min'),
-            numField('capRec', 'Max task time, off day after a shift', 'capRecoveryDay', 0, 960, 15, 'min'),
-            numField('capShift', 'Max task time, shift days', 'capShiftDay', 0, 480, 15, 'min')),
+            shiftsMode() ? numField('capRec', 'Max task time, off day after a shift', 'capRecoveryDay', 0, 960, 15, 'min') : null,
+            mode() === 'free' ? null : numField('capShift', 'Max task time, ' + workWord() + ' days', 'capShiftDay', 0, 480, 15, 'min')),
           h('div', { class: 'fields' }, numField('maxSession', 'Longest sitting for a project step', 'maxSession', 30, 480, 15, 'min')),
-          h('p', { class: 'small muted', text: 'The shift-day limit protects you after a long shift. Work tasks done during the shift do not count towards it.' })),
-        h('section', { class: 'card' }, h('h2', { text: 'Shift hours' }), shiftHoursFields()),
+          mode() === 'free' ? null : h('p', { class: 'small muted', text: 'The ' + workWord() + '-day limit protects you after a long day. Tasks done during ' + workWord() + ' don\u2019t count towards it.' })),
+        h('section', { class: 'card' }, h('h2', { text: 'Your week' }), renderModePicker()),
         h('section', { class: 'card' }, h('h2', { text: 'Week' }),
           h('label', { class: 'field' }, h('span', {}, 'Week starts on'), weekStart),
           h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'Weekend days (for "weekends only" rules)'), weekendBox))),
@@ -861,7 +923,7 @@
 
   // ---------- first-run setup ----------
   function renderWizard() {
-    var steps = ['Welcome', 'Your shifts', 'Sleep and rhythm', 'Recurring tasks', 'Alarms'];
+    var steps = ['Welcome', 'Your week', 'Sleep and rhythm', 'Recurring tasks', 'Alarms'];
     var s = ui.wizardStep;
     var bar = h('div', { class: 'steps', 'aria-hidden': 'true' }, steps.map(function (_, i) { return h('i', { class: i <= s ? 'on' : '' }); }));
     function nav(canBack, nextLabel, onNext) {
@@ -872,30 +934,30 @@
     var body;
     if (s === 0) {
       var inClaude = root.claude && typeof root.claude.use === 'function';
-      body = [h('h2', { text: 'A planner that follows your shifts' }),
-        h('p', { text: 'Most planners assume you wake at 7 and work 9 to 5. ShiftRhythm starts from your rota instead. Tell it your shifts and the things you want to do regularly, and it builds each day and week around your work, your sleep and your focus rhythm. It rings a soft chime when it is time to switch.' }),
+      body = [h('h2', { text: 'A planner that fits your real life' }),
+        h('p', { text: 'Rotating shifts, a 9-to-5, classes, or no fixed schedule at all: ShiftRhythm starts from how your week actually runs. Tell it the things you want to do, and it builds each day and week around your commitments, your sleep and your focus rhythm. Say what\u2019s coming up and it breaks big jobs into steps. It rings a soft chime when it\u2019s time to switch, and rewards the days you show up.' }),
         h('p', { class: 'small muted', text: 'Everything stays on this device. No account, no server, no tracking.' }),
         nav(false, 'Set up from scratch'),
         h('div', { class: 'proposal' },
           h('strong', { text: 'Already using ShiftRhythm on another device?' }),
           inClaude ? null : h('details', {}, h('summary', { class: 'small', text: 'Sync from your other device (recommended)' }),
-            h('p', { class: 'small muted', text: 'Use the same GitHub username, repository and passphrase as on your other device, with a token made for this device. Everything comes across: shifts, tasks, streaks and coins.' }),
+            h('p', { class: 'small muted', text: 'Use the same GitHub username, repository and passphrase as on your other device, with a token made for this device. Everything comes across: your calendar, tasks, streaks and coins.' }),
             renderSyncCard()),
           h('details', {}, h('summary', { class: 'small', text: 'Restore a backup file' }), renderRestore()))];
     } else if (s === 1) {
-      body = [h('h2', { text: 'Your shifts' }), shiftHoursFields(),
-        h('div', { class: 'fields' }, numField('wCommute', 'Travel each way', 'commuteMin', 0, 240, 5, 'min')),
-        h('h3', { text: 'This month\u2019s roster' }), root.SR.capture.renderRosterImport(),
-        h('details', {}, h('summary', { text: 'Or use a repeating rotation' }), renderPatternTool()),
-        h('p', { class: 'small muted', text: 'Irregular rota? Skip this and tap days on the Shifts calendar later.' }),
+      body = [h('h2', { text: 'What does your week look like?' }), renderModePicker(),
+        shiftsMode() ? [h('h3', { text: 'This month\u2019s roster' }), root.SR.capture.renderRosterImport(),
+          h('details', {}, h('summary', { text: 'Or use a repeating rotation' }), renderPatternTool()),
+          h('p', { class: 'small muted', text: 'Irregular rota? Skip this and tap days on the calendar later.' })] : null,
         nav(true)];
     } else if (s === 2) {
       body = [h('h2', { text: 'Sleep and focus rhythm' }),
         h('div', { class: 'fields' }, numField('wSleep', 'Sleep', 'sleepHours', 4, 12, 0.5, 'hours'),
-          h('label', { class: 'field' }, h('span', {}, 'Wake time on off days'), h('input', { type: 'time', id: 'wWake', value: state.settings.wakeTime, onchange: function (e) { var v = e.target.value; if (v) change(function () { state.settings.wakeTime = v; }); } })),
-          numField('wNap', 'Nap before night shifts', 'napMin', 0, 240, 15, 'min')),
+          h('label', { class: 'field' }, h('span', {}, mode() === 'free' ? 'Wake time' : 'Wake time on days off'), h('input', { type: 'time', id: 'wWake', value: state.settings.wakeTime, onchange: function (e) { var v = e.target.value; if (v) change(function () { state.settings.wakeTime = v; }); } })),
+          timeField('wBed', 'Usual bedtime', 'bedtime'),
+          shiftsMode() ? numField('wNap', 'Nap before night shifts', 'napMin', 0, 240, 15, 'min') : null),
         h('h3', { text: 'How long can you focus before a break?' }), rhythmPicker(),
-        h('div', { class: 'fields' }, numField('wCapOff', 'Max task time, off days', 'capOffDay', 0, 960, 15, 'min'), numField('wCapShift', 'Max task time, shift days', 'capShiftDay', 0, 480, 15, 'min')),
+        h('div', { class: 'fields' }, numField('wCapOff', mode() === 'free' ? 'Max task time a day' : 'Max task time, days off', 'capOffDay', 0, 960, 15, 'min'), mode() === 'free' ? null : numField('wCapShift', 'Max task time, ' + workWord() + ' days', 'capShiftDay', 0, 480, 15, 'min')),
         nav(true)];
     } else if (s === 3) {
       var list = h('div', {});
@@ -905,7 +967,7 @@
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(t, false); } }, 'Edit')));
       });
       body = [h('h2', { text: 'Things you do regularly' }),
-        h('p', { class: 'small muted', text: 'Workouts, practice, rehearsals, content, admin. For each one, say how often, how long, and which days it is allowed on.' }),
+        h('p', { class: 'small muted', text: 'Workouts, study, practice, chores, side projects, family time. For each one, say how often, how long, and which days it\u2019s allowed on.' }),
         h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { openEditor(null, false); } }, 'Add a task'),
           h('button', { class: 'btn', type: 'button', onclick: addExamples }, 'Add examples')),
         list, nav(true)];
@@ -936,7 +998,7 @@
     if (b.kind === 'task') return { title: 'Time for: ' + b.title + (b.part ? ' (' + b.part + ')' : ''), body: b.startTime + '–' + b.endTime + ' · ' + dur(b.minutes) + ' focus' };
     if (b.kind === 'break') return { title: 'Break time', body: 'Step away for ' + dur(b.minutes) + '. Stretch, drink some water.' };
     if (b.kind === 'commute') return { title: b.title, body: 'Leave now · ' + b.startTime };
-    if (b.kind === 'prep') return { title: 'Time to get up and get ready', body: 'Leave for work at ' + b.endTime + '.' };
+    if (b.kind === 'prep') return { title: 'Time to get up and get ready', body: 'Leave at ' + b.endTime + '.' };
     if (b.kind === 'nap') return { title: 'Nap time', body: 'Rest before your night shift until ' + b.endTime + '.' };
     return { title: 'Wind down for sleep', body: 'Sleep until ' + b.endTime + '.' };
   }
@@ -981,7 +1043,8 @@
   // ---------- shared with capture.js ----------
   root.SR.app = {
     h: h, state: function () { return state; }, plan: function () { return plan; }, change: change, render: render, toast: toast,
-    todayIso: todayIso, nowMin: nowMin, dur: dur, dayLabel: dayLabel, colorVar: colorVar, tint: tint
+    todayIso: todayIso, nowMin: nowMin, dur: dur, dayLabel: dayLabel, colorVar: colorVar, tint: tint,
+    mode: mode, workWord: workWord, workLabel: workLabel, dayTypeLabel: dayTypeLabel
   };
 
   // ---------- boot ----------

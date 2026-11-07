@@ -135,7 +135,7 @@
   function whenSelect(pr, onchange) {
     return h('select', { onchange: function (e) { pr.when = e.target.value; onchange(); } },
       h('option', { value: 'outside', selected: pr.when === 'outside' }, 'Personal time'),
-      h('option', { value: 'during', selected: pr.when === 'during' }, 'During my shift'));
+      h('option', { value: 'during', selected: pr.when === 'during' }, A().mode() === 'shifts' ? 'During my shift' : 'During ' + A().workWord()));
   }
   function remove(pr) { ui.proposals = ui.proposals.filter(function (x) { return x !== pr; }); A().render(); }
   function placementText(pl) { return pl ? A().dayLabel(pl.date) + ', ' + pl.time : 'won\u2019t fit'; }
@@ -237,9 +237,9 @@
   function refine(pr) {
     if (!ui.claude) return;
     ui.refining = pr.id; A().render();
-    var prompt = 'Break this task into practical, specific steps for a busy shift worker.\n' +
+    var prompt = 'Break this task into practical, specific steps for a busy person.\n' +
       'Task: ' + pr.title + '\nKind of work: ' + pr.typeLabel + '\nTotal time to spend: ' + pr.minutes + ' minutes\n' +
-      'Deadline: ' + pr.due + ' (today is ' + A().todayIso() + ')\n' + (pr.when === 'during' ? 'Done during work shifts.\n' : 'Done in personal time.\n') +
+      'Deadline: ' + pr.due + ' (today is ' + A().todayIso() + ')\n' + (pr.when === 'during' ? 'Done during ' + A().workWord() + '.\n' : 'Done in personal time.\n') +
       'Rules: 4 to 10 steps in the order they should happen. Each title is a short instruction (at most 8 words) specific to this task. ' +
       'Minutes per step are multiples of 5, at least 15, adding up to about ' + pr.minutes + '.\n' +
       'Reply with only JSON like {"steps":[{"title":"Confirm venue and date","minutes":60}]}';
@@ -360,20 +360,20 @@
   // ---------- daily briefing (built on the device) ----------
   function briefing() {
     var app = A(), st = S(), plan = app.plan(), t = app.todayIso(), lines = [];
-    var type = st.shifts[t] || 'off';
+    var type = plan.days[0] && plan.days[0].date === t ? plan.days[0].type : (st.shifts[t] || 'off');
     var todays = plan.blocks.filter(function (b) { return b.date === t; });
     var shift = todays.filter(function (b) { return b.kind === 'shift'; })[0];
     var recover = plan.blocks.filter(function (b) { return b.kind === 'sleep' && b.title !== 'Sleep' && b.date === t; })[0];
-    var leave = todays.filter(function (b) { return b.kind === 'commute' && b.title === 'Travel to work'; })[0];
-    if (type === 'day' && shift) lines.push('Day shift ' + shift.startTime + '\u2013' + shift.endTime + (leave ? ', leave by ' + leave.startTime : '') + '.');
+    var leave = todays.filter(function (b) { return b.kind === 'commute' && shift && b.e <= shift.s; })[0];
+    if (type === 'day' && shift) lines.push(A().dayTypeLabel('day') + ' ' + shift.startTime + '\u2013' + shift.endTime + (leave ? ', leave by ' + leave.startTime : '') + '.');
     else if (type === 'night' && shift) {
       var nap = todays.filter(function (b) { return b.kind === 'nap'; })[0];
       lines.push('Night shift tonight from ' + shift.startTime + '.' + (nap ? ' Nap ' + nap.startTime + '\u2013' + nap.endTime + ' first.' : ''));
-    } else lines.push('Off day.');
+    } else lines.push(A().dayTypeLabel('off') + '.');
     if (recover && recover.title === 'Rest after night shift') lines.push('Home from last night\u2019s shift: keep it light, rest ' + recover.startTime + '\u2013' + recover.endTime + ', then a few active hours before bed.');
     else if (recover) lines.push('Sleeping until ' + recover.endTime + ' after last night\u2019s shift.');
     var dk = plan.days[0] && plan.days[0].kind;
-    if (dk === 'off' && plan.days[0].wake) lines[0] = 'Normal off day, up at ' + plan.days[0].wake + '.';
+    if (dk === 'off' && plan.days[0].wake) lines[0] = (A().mode() === 'shifts' ? 'Normal off day' : A().dayTypeLabel('off')) + ', up at ' + plan.days[0].wake + '.';
     if (dk === 'recovery' && type === 'off') lines[0] = 'Off day after your shift' + (!recover && plan.days[0].wake ? ', up around ' + plan.days[0].wake : '') + '. Take it easy.';
     var now = Sch.absFor(plan, t, app.nowMin());
     var tasks = todays.filter(function (b) { return b.kind === 'task'; });
@@ -408,7 +408,8 @@
   function askAdvice(out) {
     var app = A(), plan = app.plan(), t = app.todayIso();
     var blocks = plan.blocks.filter(function (b) { return b.date === t && b.kind !== 'break'; }).map(function (b) { return b.startTime + '\u2013' + b.endTime + ' ' + b.title + (b.done ? ' (done)' : ''); });
-    var prompt = 'I work rotating day and night shifts. Here is my plan for today (' + t + '), already scheduled around my shift and sleep:\n' + blocks.join('\n') +
+    var who = A().mode() === 'shifts' ? 'I work rotating day and night shifts.' : A().mode() === 'regular' ? 'I have a regular schedule (' + A().workLabel() + ').' : 'I don\u2019t have fixed commitments right now.';
+    var prompt = who + ' Here is my plan for today (' + t + '), already scheduled around my commitments and sleep:\n' + blocks.join('\n') +
       '\n\nBriefing: ' + briefing().join(' ') +
       '\n\nIn at most 5 short bullet lines, tell me how to approach today: what to protect, what to do first, and one thing to drop if energy is low. Plain text, no markdown headings.';
     ui.adviceBusy = true; out.hidden = false; out.textContent = 'Thinking\u2026';
