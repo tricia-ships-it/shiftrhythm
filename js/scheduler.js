@@ -75,14 +75,20 @@
     shifts: { day: { start: '07:00', end: '19:00' }, night: { start: '19:00', end: '07:00' } },
     commuteMin: 45,        // travel each way
     prepMin: 60,           // getting ready between waking and leaving
-    sleepHours: 8,
-    wakeTime: '07:00',     // wake time when the next day is not a day shift
-    napMin: 90,            // nap before the first night shift in a run (0 = off)
-    handoverMin: 30,       // start of a shift kept free of "during shift" tasks
+    sleepHours: 8,           // least sleep before a shift
+    wakeTime: '06:00',       // wake time on a normal off day
+    wakeAfterDayShift: '10:00', // wake time the morning after a day shift (when not working)
+    bedtime: '22:00',        // usual bedtime (earlier when a shift needs it)
+    postNightSleep: '12:30', // after a night shift: stay up until this time...
+    postNightWake: '17:00',  // ...rest until this time, then sleep again at bedtime
+    napMin: 90,              // nap before the first night shift in a run (0 = off)
+    handoverMin: 30,         // settling-in time at the start of a shift, kept free of work tasks
+    shiftEndBufferMin: 30,   // handover time at the end of a shift, kept free of work tasks
     focusMin: 30,
     breakMin: 15,
     capOffDay: 300,        // max minutes of personal tasks on an off day
     capShiftDay: 60,       // ... on a day-shift or night-shift day
+    capRecoveryDay: 150,   // ... on the first off day after a shift
     weekendDays: [0, 6],
     weekStartsOn: 1,
     sound: true,
@@ -93,6 +99,7 @@
     voice: false           // browser voice typing (opt-in: it uses an online speech service)
   };
   var TIME_OF_DAY = {
+    wake: [0, 24 * 60],          // first thing after waking, in list order (morning routine)
     morning: [5 * 60, 12 * 60],
     afternoon: [12 * 60, 17 * 60],
     evening: [17 * 60, 23 * 60]
@@ -107,7 +114,7 @@
       night: Object.assign({}, DEFAULT_SETTINGS.shifts.night, (s.shifts || {}).night || {})
     };
     out.sleepMin = Math.round(Number(out.sleepHours) * 60) || 480;
-    ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'headsUpMin'].forEach(function (k) {
+    ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'shiftEndBufferMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'capRecoveryDay', 'headsUpMin'].forEach(function (k) {
       out[k] = Math.max(0, Math.round(Number(out[k]) || 0));
     });
     if (out.focusMin < 5) out.focusMin = 5;
@@ -162,7 +169,16 @@
         structure.push({ s: e, e: e + S.commuteMin, kind: 'commute', title: 'Travel home' });
       }
       if (t === 'night') {
-        structure.push({ s: e + S.commuteMin, e: e + S.commuteMin + S.sleepMin, kind: 'sleep', title: 'Sleep after night shift' });
+        var home = e + S.commuteMin, nd = addDays(d, 1);
+        if (typeOf(nd) === 'night') {
+          // another night shift tonight: sleep through the day until it's time to get ready
+          var nextStart = abs(nd, hm(S.shifts.night.start));
+          structure.push({ s: home + 30, e: nextStart - S.commuteMin - S.prepMin, kind: 'sleep', title: 'Sleep between night shifts' });
+        } else if (typeOf(nd) === 'off') {
+          // stay up a while after getting home, rest in the afternoon, sleep again at night
+          var rs = Math.max(home + 30, abs(nd, hm(S.postNightSleep))), re = abs(nd, hm(S.postNightWake));
+          if (re - rs >= 60) structure.push({ s: rs, e: re, kind: 'sleep', title: 'Rest after night shift' });
+        }
         if (S.napMin > 0 && typeOf(addDays(d, -1)) !== 'night') {
           var napEnd = s - S.commuteMin - S.prepMin;
           structure.push({ s: napEnd - S.napMin, e: napEnd, kind: 'nap', title: 'Nap before night shift' });
@@ -170,17 +186,21 @@
       }
     });
     var hard = structure.filter(function (b) { return b.kind === 'shift' || b.kind === 'commute' || b.kind === 'prep'; });
+    var wakeAt = {}; // date -> minute you get up (start of the day)
     dates.forEach(function (d) {
       if (typeOf(d) === 'night') return; // working through this night
       var nx = addDays(d, 1);
-      var wake = typeOf(nx) === 'day'
-        ? abs(nx, hm(S.shifts.day.start)) - S.commuteMin - S.prepMin
-        : abs(nx, hm(S.wakeTime));
-      var s = wake - S.sleepMin, e = wake;
+      var wake;
+      if (typeOf(nx) === 'day') wake = abs(nx, hm(S.shifts.day.start)) - S.commuteMin - S.prepMin;
+      else if (typeOf(d) === 'day') wake = abs(nx, hm(S.wakeAfterDayShift));
+      else wake = abs(nx, hm(S.wakeTime));
+      var bt = hm(S.bedtime);
+      var bed = abs(d, bt) + (bt < 12 * 60 ? DAY : 0);     // a 00:30 bedtime belongs to the next morning
+      var s = Math.min(bed, wake - S.sleepMin), e = wake;
       hard.forEach(function (b) {
         if (b.s < e && b.e > s) { if (b.e <= wake) s = Math.max(s, b.e); else e = Math.min(e, b.s); }
       });
-      if (e - s >= 60) structure.push({ s: s, e: e, kind: 'sleep', title: 'Sleep' });
+      if (e - s >= 60) { structure.push({ s: s, e: e, kind: 'sleep', title: 'Sleep' }); wakeAt[nx] = e; }
     });
     // merge overlapping sleep/nap blocks
     var sleeps = structure.filter(function (b) { return b.kind === 'sleep'; }).sort(function (a, b) { return a.s - b.s; });
@@ -199,7 +219,7 @@
       structure.forEach(function (b) { w = subtract(w, b.s, b.e); });
       var ww = [];
       structure.forEach(function (b) {
-        if (b.kind === 'shift' && dateOfAbs(b.s) === d) ww.push({ s: b.s + S.handoverMin, e: b.e });
+        if (b.kind === 'shift' && dateOfAbs(b.s) === d) ww.push({ s: b.s + S.handoverMin, e: b.e - S.shiftEndBufferMin });
       });
       if (nowAbs != null && d === today) {
         var cut = Math.ceil(nowAbs / 5) * 5;
@@ -231,9 +251,12 @@
     });
 
     // 3. Expand tasks into instances.
+    // Off days come in two kinds: a normal off day, and the first off day after a shift (recovery).
+    function kindOf(d) { var t = typeOf(d); return t !== 'off' ? t : typeOf(addDays(d, -1)) === 'off' ? 'off' : 'recovery'; }
+    function capFor(d) { var k = kindOf(d); return k === 'off' ? S.capOffDay : k === 'recovery' ? S.capRecoveryDay : S.capShiftDay; }
     function eligible(task, d) {
-      var t = typeOf(d);
-      var rule = (task.allow || {})[t] || 'yes';
+      var t = typeOf(d), k = kindOf(d), al = task.allow || {};
+      var rule = k === 'recovery' ? (al.recovery || al.off || 'yes') : (al[t] || 'yes');
       if (rule === 'no') return false;
       if (rule === 'weekend' && S.weekendDays.indexOf(weekday(d)) < 0) return false;
       if (task.when === 'during' && t === 'off') return false;
@@ -250,7 +273,7 @@
     var instances = [], unplaced = [];
     function inst(task, key, candidates, extra) {
       return Object.assign({
-        key: key, taskId: task.id, title: task.title, source: extra.source,
+        key: key, taskId: task.id, title: task.title, source: extra.source, order: extra.order || 0,
         duration: Math.max(5, Math.round(Number(task.durationMin) || 30)),
         when: task.when || 'outside',
         timeOfDay: task.timeOfDay || 'any',
@@ -261,7 +284,7 @@
       }, extra);
     }
 
-    (state.recurring || []).forEach(function (r) {
+    (state.recurring || []).forEach(function (r, order) {
       if (!r || r.active === false || !r.title) return;
       var times = Math.max(1, Math.min(14, Math.round(Number(r.times) || 1)));
       var per = r.per === 'week' || r.per === 'month' ? r.per : 'day';
@@ -272,7 +295,7 @@
             var key = r.id + '@D' + d + '#' + k;
             if (log[key]) continue;
             var tod = times > 1 && (r.timeOfDay || 'any') === 'any' ? ['morning', 'afternoon', 'evening'][k % 3] : r.timeOfDay;
-            instances.push(inst(r, key, [d], { source: 'recurring', period: d, periodEnd: d, timeOfDay: tod || 'any' }));
+            instances.push(inst(r, key, [d], { source: 'recurring', period: d, periodEnd: d, timeOfDay: tod || 'any', order: order }));
           }
         });
       } else if (per === 'week') {
@@ -293,7 +316,7 @@
           var m = usable.length, kk = remaining.length;
           remaining.forEach(function (key, i2) {
             var target = usable[Math.min(m - 1, Math.floor((i2 + 0.5) * m / kk))];
-            instances.push(inst(r, key, byDistance(usable, target), { source: 'recurring', period: ws, periodEnd: addDays(ws, 6) }));
+            instances.push(inst(r, key, byDistance(usable, target), { source: 'recurring', period: ws, periodEnd: addDays(ws, 6), order: order }));
           });
         });
       } else {
@@ -377,7 +400,36 @@
     }
 
     var taskBlocks = [];
+
+    // Morning routine: tasks set to "first thing after waking" run back to back from your wake time.
+    var routineEnd = {};
+    instances.filter(function (it) { return it.timeOfDay === 'wake' && it.fixed == null; })
+      .sort(function (a, b) { return a.order - b.order; })
+      .forEach(function (it) {
+        for (var ci = 0; ci < it.candidates.length; ci++) {
+          var d = it.candidates[ci];
+          if (!free[d] || wakeAt[d] == null) continue;
+          var cap = capFor(d);
+          if (load[d] + it.duration > cap) continue;
+          var st = routineEnd[d] != null ? routineEnd[d] : wakeAt[d];
+          if (nowAbs != null && st < nowAbs) continue;
+          if (!contained(free[d], st, st + it.duration)) continue;
+          free[d] = subtract(free[d], st, st + it.duration);
+          load[d] += it.duration;
+          routineEnd[d] = st + it.duration;
+          taskBlocks.push({ s: st, e: st + it.duration, kind: 'task', title: it.title, key: it.key, taskId: it.taskId, source: it.source, part: '', during: false, routine: true, conflict: false, overdue: false });
+          it.placed = true;
+          return;
+        }
+        it.timeOfDay = 'morning'; // no wake slot (e.g. shift day): plan it like any morning task
+      });
+    Object.keys(routineEnd).forEach(function (d) {
+      var e = routineEnd[d], be = Math.min(e + S.breakMin, endOfWindowAt(free[d], e));
+      if (be > e) { free[d] = subtract(free[d], e, be); taskBlocks.push({ s: e, e: be, kind: 'break', title: 'Break' }); }
+    });
+
     instances.forEach(function (it) {
+      if (it.placed) return;
       var reason = 'No free time on the allowed days.';
       var clash = null;
       for (var ci = 0; ci < it.candidates.length; ci++) {
@@ -387,7 +439,7 @@
         for (var pi = 0; pi < pools.length; pi++) {
           var pool = pools[pi];
           var windows = pool === 'work' ? work[d] : free[d];
-          var cap = typeOf(d) === 'off' ? S.capOffDay : S.capShiftDay;
+          var cap = capFor(d);
           if (pool === 'out' && load[d] + it.duration > cap) { reason = 'Daily limit for personal tasks reached on the allowed days.'; continue; }
 
           if (it.fixed != null) {
@@ -452,7 +504,7 @@
     var days = horizon.map(function (d) {
       var focus = 0;
       all.forEach(function (b) { if (b.kind === 'task' && b.date === d) focus += b.minutes; });
-      return { date: d, type: typeOf(d), weekday: weekday(d), taskMinutes: focus };
+      return { date: d, type: typeOf(d), kind: kindOf(d), weekday: weekday(d), taskMinutes: focus, wake: wakeAt[d] != null ? fmt(wakeAt[d] % DAY) : '' };
     });
 
     return {

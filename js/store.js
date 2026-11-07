@@ -33,7 +33,8 @@
   function oneOf(v, list, dflt) { return list.indexOf(v) >= 0 ? v : dflt; }
   function allow(a) {
     a = a || {};
-    return { off: oneOf(a.off, ['yes', 'no', 'weekend'], 'yes'), day: oneOf(a.day, ['yes', 'no', 'weekend'], 'yes'), night: oneOf(a.night, ['yes', 'no', 'weekend'], 'yes') };
+    var off = oneOf(a.off, ['yes', 'no', 'weekend'], 'yes');
+    return { off: off, recovery: oneOf(a.recovery, ['yes', 'no', 'weekend'], off), day: oneOf(a.day, ['yes', 'no', 'weekend'], 'yes'), night: oneOf(a.night, ['yes', 'no', 'weekend'], 'yes') };
   }
   function cleanTask(t, oneoff) {
     if (!t || typeof t !== 'object') return null;
@@ -43,7 +44,7 @@
       category: str(t.category, 40),
       durationMin: num(t.durationMin, 5, 720, 30),
       when: oneOf(t.when, ['outside', 'during', 'either'], 'outside'),
-      timeOfDay: oneOf(t.timeOfDay, ['any', 'morning', 'afternoon', 'evening'], 'any'),
+      timeOfDay: oneOf(t.timeOfDay, ['any', 'wake', 'morning', 'afternoon', 'evening'], 'any'),
       fixedTime: HM.test(t.fixedTime || '') ? t.fixedTime : '',
       keepWhole: !!t.keepWhole,
       priority: num(t.priority, 1, 3, 2),
@@ -74,9 +75,11 @@
     s.setupDone = !!raw.setupDone;
     var D = root.SR.scheduler.DEFAULT_SETTINGS, r = raw.settings || {};
     var st = s.settings;
-    ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'headsUpMin'].forEach(function (k) {
+    ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'shiftEndBufferMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'capRecoveryDay', 'headsUpMin'].forEach(function (k) {
       st[k] = num(r[k], 0, 1440, D[k]);
     });
+    ['wakeAfterDayShift', 'bedtime', 'postNightSleep', 'postNightWake'].forEach(function (k) { st[k] = HM.test(r[k] || '') ? r[k] : D[k]; });
+    st.rosterName = str(r.rosterName, 60);
     st.sleepHours = num(r.sleepHours, 3, 12, D.sleepHours);
     st.volume = num(r.volume, 0, 1, D.volume);
     st.sound = r.sound !== false;

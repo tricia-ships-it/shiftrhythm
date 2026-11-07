@@ -77,3 +77,14 @@ test('big steps are split into sessions', () => {
   assert.ok(b.steps.every(s => s.minutes <= 125));
   assert.ok(b.steps.some(s => /\(\d+\/\d+\)/.test(s.title)));
 });
+
+test('roster codes: sequence, packed and day pairs', () => {
+  const a = S.parseRoster('D D N N O O O O D D', '2026-12');
+  assert.equal(a.shifts['2026-12-01'], 'day'); assert.equal(a.shifts['2026-12-03'], 'night'); assert.equal(a.shifts['2026-12-05'], 'off');
+  assert.equal(Object.keys(a.shifts).length, 10);
+  const b = S.parseRoster('DDNNOOOO', '2026-12');
+  assert.equal(b.shifts['2026-12-08'], 'off');
+  const c = S.parseRoster('1 D, 2 D, 3 N, 4 N, 5 Off, 6 R', '2026-12');
+  assert.equal(c.shifts['2026-12-04'], 'night'); assert.equal(c.shifts['2026-12-06'], 'off');
+  assert.deepEqual(S.parseRoster('D Q N', '2026-12').unknown, ['q']);
+});

@@ -35,8 +35,9 @@ test('night shift crosses midnight and sleep follows it', () => {
   assert.equal(night.startTime, '19:00');
   assert.equal(night.endTime, '07:00');
   assert.equal(night.endDate, '2026-11-12');
-  const sleep = p.blocks.find(b => b.kind === 'sleep' && b.date === '2026-11-12' && b.startTime === '07:45');
-  assert.ok(sleep, 'sleep after night shift starts after the commute home');
+  const sleep = p.blocks.find(b => b.kind === 'sleep' && b.date === '2026-11-12' && b.title === 'Sleep between night shifts');
+  assert.equal(sleep.startTime, '08:15', 'between two nights: sleep soon after getting home');
+  assert.equal(sleep.endTime, '17:15', 'up in time to get ready for the next night');
   assert.ok(p.blocks.find(b => b.kind === 'nap' && b.date === '2026-11-11'), 'nap before the first night shift');
   assert.ok(!p.blocks.find(b => b.kind === 'nap' && b.date === '2026-11-12'), 'no nap before the second night in a row');
 });
@@ -155,7 +156,7 @@ test('getting-ready time before a shift is protected', () => {
 });
 
 test('project steps respect their window and may slip only to the project deadline', () => {
-  const p = plan({ settings: { capOffDay: 60 }, oneoffs: [
+  const p = plan({ settings: { capOffDay: 60, capRecoveryDay: 60 }, oneoffs: [
     { id: 'a', title: 'Step A', durationMin: 60, after: '2026-11-13', due: '2026-11-13', deadline: '2026-11-15', project: 'p1' },
     { id: 'b', title: 'Step B', durationMin: 60, after: '2026-11-13', due: '2026-11-13', deadline: '2026-11-15', project: 'p1' },
     { id: 'c', title: 'Later step', durationMin: 30, after: '2026-11-20', due: '2026-11-22', project: 'p1' }
@@ -165,4 +166,38 @@ test('project steps respect their window and may slip only to the project deadli
   assert.ok(b.date > '2026-11-13' && b.date <= '2026-11-15', 'B slips past its own window because of the daily limit');
   assert.ok(!p.blocks.find(x => x.title === 'Later step'), 'outside the planning window: planned later');
   assert.equal(a.project, 'p1');
+});
+
+test('her sleep pattern: 10:00 after day shifts, afternoon rest after nights, 06:00 on normal off days', () => {
+  const p = plan({});
+  const day = d => p.days.find(x => x.date === d);
+  assert.equal(day('2026-11-10').wake, '05:15', 'day shift: up in time to get ready and travel');
+  assert.equal(day('2026-11-11').wake, '10:00', 'morning after a day shift');
+  const rest = p.blocks.find(b => b.kind === 'sleep' && b.date === '2026-11-13' && b.title === 'Rest after night shift');
+  assert.equal(rest.startTime, '12:30'); assert.equal(rest.endTime, '17:00');
+  const night = p.blocks.find(b => b.kind === 'sleep' && b.date === '2026-11-13' && b.title === 'Sleep');
+  assert.equal(night.startTime, '22:00');
+  assert.equal(day('2026-11-14').wake, '06:00', 'normal off day');
+  assert.equal(day('2026-11-13').kind, 'recovery');
+  assert.equal(day('2026-11-14').kind, 'off');
+});
+
+test('morning routine runs back to back from wake time on normal off days only', () => {
+  const only = { off: 'yes', recovery: 'no', day: 'no', night: 'no' };
+  const p = plan({ recurring: [
+    { id: 'ex', title: 'Exercise', durationMin: 45, per: 'day', times: 1, timeOfDay: 'wake', allow: only },
+    { id: 'wa', title: 'Wash', durationMin: 20, per: 'day', times: 1, timeOfDay: 'wake', allow: only },
+    { id: 'bf', title: 'Breakfast', durationMin: 30, per: 'day', times: 1, timeOfDay: 'wake', allow: only }
+  ] });
+  const on14 = p.blocks.filter(b => b.kind === 'task' && b.date === '2026-11-14');
+  assert.deepEqual(on14.map(b => b.title + ' ' + b.startTime), ['Exercise 06:00', 'Wash 06:45', 'Breakfast 07:05']);
+  assert.ok(!p.blocks.some(b => b.title === 'Exercise' && b.date === '2026-11-13'), 'not on the recovery day');
+});
+
+test('work tasks stay clear of shift start and end', () => {
+  const mk = mins => plan({ settings: { handoverMin: 45, shiftEndBufferMin: 30 }, recurring: [{ id: 'v', title: 'Docs', durationMin: mins, per: 'week', times: 1, when: 'during', keepWhole: true, allow: { off: 'no', day: 'yes', night: 'no' } }] });
+  const ok = mk(600).blocks.find(b => b.title === 'Docs');
+  assert.equal(ok.startTime, '07:45');
+  assert.ok(S.hm(ok.endTime) <= S.hm('18:30'));
+  assert.equal(mk(660).unplaced.length, 1, '11 h does not fit in a 12 h shift minus 75 min');
 });

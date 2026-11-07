@@ -268,7 +268,41 @@
     return { steps: steps, totalMin: steps.reduce(function (a, s) { return a + s.minutes; }, 0), start: start, due: due, finishBy: lastDay, typeLabel: type.label };
   }
 
-  var API = { parse: parse, parseOne: parseOne, breakdown: breakdown, findDate: findDate, findDuration: findDuration, findTime: findTime, TYPES: TYPES };
+  // ---------- roster codes ----------
+  // Turns pasted roster codes for one month into {date: 'day'|'night'|'off'}.
+  // Accepts a sequence ("D D N N O O O O ..." or "DDNNOOOO") starting on day 1,
+  // or day/code pairs ("1 D, 2 D, 3 N" or "1:D 2:N").
+  var CODE = {
+    d: 'day', day: 'day', days: 'day', m: 'day', am: 'day', '7-19': 'day', '07-19': 'day', '7am-7pm': 'day',
+    n: 'night', night: 'night', nights: 'night', nt: 'night', '19-7': 'night', '19-07': 'night', '7pm-7am': 'night',
+    o: 'off', off: 'off', r: 'off', rest: 'off', x: 'off', '-': 'off', l: 'off', al: 'off', leave: 'off', h: 'off', hol: 'off', holiday: 'off', 'day off': 'off'
+  };
+  function parseRoster(text, month) {
+    var out = {}, unknown = [];
+    if (!/^\d{4}-\d{2}$/.test(month || '')) return { shifts: out, unknown: ['month'] };
+    var dates = Sch.monthDates(month + '-01');
+    var t = String(text || '').toLowerCase().replace(/day off/g, 'off');
+    var pairs = [], m, rx = /\b(\d{1,2})\s*[:=.\-)]?\s*([a-z]+|\d{1,2}-\d{1,2}|-)(?=[\s,;]|$)/g;
+    while ((m = rx.exec(t))) pairs.push(m);
+    if (pairs.length >= 3) {
+      pairs.forEach(function (p) {
+        var day = Number(p[1]), code = CODE[p[2]];
+        if (day >= 1 && day <= dates.length && code) out[dates[day - 1]] = code; else unknown.push(p[0].trim());
+      });
+    } else {
+      var tokens = t.split(/[\s,;|\/]+/).filter(Boolean);
+      if (tokens.length === 1 && /^[dnorx-]+$/.test(tokens[0]) && tokens[0].length > 3) tokens = tokens[0].split('');
+      var i = 0;
+      tokens.forEach(function (tok) {
+        var code = CODE[tok];
+        if (!code) { unknown.push(tok); return; }
+        if (i < dates.length) out[dates[i++]] = code;
+      });
+    }
+    return { shifts: out, unknown: unknown.slice(0, 10) };
+  }
+
+  var API = { parseRoster: parseRoster, parse: parse, parseOne: parseOne, breakdown: breakdown, findDate: findDate, findDuration: findDuration, findTime: findTime, TYPES: TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else { root.SR = root.SR || {}; root.SR.smart = API; }
 })(this);

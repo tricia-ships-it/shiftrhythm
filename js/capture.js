@@ -20,7 +20,11 @@
   // ---------- Claude (only inside Claude) ----------
   function init() {
     if (root.claude && typeof root.claude.use === 'function') {
-      root.claude.use('sample').then(function (s) { if (s) { ui.claude = s; A().render(); } }).catch(function () {});
+      root.claude.use('sample').then(function (s) {
+        if (!s) return;
+        ui.claude = s; A().render();
+        return s.limits().then(function (l) { ui.claudeImages = !!(l && l.images); A().render(); }).catch(function () {});
+      }).catch(function () {});
     }
   }
 
@@ -366,7 +370,11 @@
       var nap = todays.filter(function (b) { return b.kind === 'nap'; })[0];
       lines.push('Night shift tonight from ' + shift.startTime + '.' + (nap ? ' Nap ' + nap.startTime + '\u2013' + nap.endTime + ' first.' : ''));
     } else lines.push('Off day.');
-    if (recover) lines.push('After last night\u2019s shift you\u2019re sleeping until ' + recover.endTime + '. Everything else starts after that.');
+    if (recover && recover.title === 'Rest after night shift') lines.push('Home from last night\u2019s shift: keep it light, rest ' + recover.startTime + '\u2013' + recover.endTime + ', then a few active hours before bed.');
+    else if (recover) lines.push('Sleeping until ' + recover.endTime + ' after last night\u2019s shift.');
+    var dk = plan.days[0] && plan.days[0].kind;
+    if (dk === 'off' && plan.days[0].wake) lines[0] = 'Normal off day, up at ' + plan.days[0].wake + '.';
+    if (dk === 'recovery' && type === 'off') lines[0] = 'Off day after your shift' + (!recover && plan.days[0].wake ? ', up around ' + plan.days[0].wake : '') + '. Take it easy.';
     var now = Sch.absFor(plan, t, app.nowMin());
     var tasks = todays.filter(function (b) { return b.kind === 'task'; });
     var left = tasks.filter(function (b) { return !b.done && b.e > now; });
@@ -409,6 +417,89 @@
       .then(function () { ui.adviceBusy = false; app.render(); });
   }
 
+  // ---------- roster import ----------
+  var roster = { month: '', draft: null, busy: false, msg: '' };
+  function defaultMonth() {
+    var t = A().todayIso();
+    if (Number(t.slice(8)) < 20) return t.slice(0, 7);
+    var y = Number(t.slice(0, 4)), m = Number(t.slice(5, 7)) + 1; if (m > 12) { m = 1; y++; }
+    return y + '-' + String(m).padStart(2, '0');
+  }
+  function renderRosterImport() {
+    if (!roster.month) roster.month = defaultMonth();
+    var month = h('input', { type: 'month', id: 'rosterMonth', value: roster.month, onchange: function (e) { roster.month = e.target.value; roster.draft = null; A().render(); } });
+    var name = h('input', { type: 'text', id: 'rosterName', value: S().settings.rosterName || '', placeholder: 'e.g. Patricia A.', onchange: function (e) { var v = e.target.value.trim(); A().change(function () { S().settings.rosterName = v; }); } });
+    var box = h('div', { class: 'stack' },
+      h('div', { class: 'fields' }, field('Month', month), field('Your name on the roster', name)));
+    if (ui.claude && ui.claudeImages) {
+      var file = h('input', { type: 'file', id: 'rosterPhoto', accept: 'image/*' });
+      box.append(h('div', { class: 'stack' },
+        h('label', { class: 'field' }, h('span', {}, 'Photo of the roster'), file),
+        h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', disabled: roster.busy, onclick: function () { readPhoto(file.files && file.files[0]); } }, roster.busy ? 'Reading the roster…' : 'Read my shifts from the photo')),
+        h('p', { class: 'small muted', text: 'Claude reads the photo and finds your row. You check the result before anything changes. The standalone app can\u2019t read photos on its own, so there you paste the codes instead.' })));
+    }
+    var codes = h('textarea', { id: 'rosterCodes', rows: '2', placeholder: 'Or paste your codes for the month, e.g. D D N N O O O O D D N N…  or  1 D, 2 D, 3 N…' });
+    box.append(codes, h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () {
+      var r = Smart.parseRoster(codes.value, roster.month);
+      roster.draft = r.shifts; roster.msg = r.unknown.length ? 'Didn\u2019t recognise: ' + r.unknown.join(', ') + '. Use D, N or O (Off/R/L also work).' : '';
+      if (!Object.keys(r.shifts).length) roster.msg = 'No shifts found. Use D for day, N for night, O for off.';
+      A().render();
+    } }, 'Read the codes')));
+    if (roster.msg) box.append(h('p', { class: 'small warn-text', text: roster.msg }));
+    if (roster.draft && Object.keys(roster.draft).length) box.append(renderDraft());
+    return box;
+  }
+  function renderDraft() {
+    var dates = Sch.monthDates(roster.month + '-01');
+    var ws = S().settings.weekStartsOn, gs = Sch.weekStart(dates[0], ws);
+    var cal = h('div', { class: 'cal' });
+    for (var i = 0; i < 7; i++) cal.append(h('div', { class: 'hd', text: A().dayLabel(Sch.addDays(gs, i), { weekday: 'short' }) }));
+    var n = Sch.diffDays(gs, dates[dates.length - 1]) + 1;
+    for (i = 0; i < n; i++) {
+      (function (d) {
+        var inMonth = d.slice(0, 7) === roster.month;
+        var t = roster.draft[d] || 'off';
+        cal.append(h('button', { type: 'button', class: t + (inMonth ? '' : ' out'), disabled: !inMonth, 'aria-label': d + ': ' + t,
+          onclick: function () { var o = ['off', 'day', 'night']; roster.draft[d] = o[(o.indexOf(t) + 1) % 3]; A().render(); } },
+          h('span', { class: 'n', text: String(Number(d.slice(8))) }), h('span', { class: 's', text: inMonth ? (t === 'off' ? 'Off' : t === 'day' ? 'Day' : 'Night') : '' })));
+      })(Sch.addDays(gs, i));
+    }
+    var counts = { day: 0, night: 0, off: 0 };
+    dates.forEach(function (d) { counts[roster.draft[d] || 'off']++; });
+    return h('div', { class: 'proposal' },
+      h('strong', { text: 'Check before applying: ' + A().dayLabel(roster.month + '-01', { month: 'long', year: 'numeric' }) }),
+      h('p', { class: 'small muted', text: counts.day + ' day shifts, ' + counts.night + ' night shifts, ' + counts.off + ' off days. Tap a day to fix it.' }),
+      cal,
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', type: 'button', onclick: function () {
+          var draft = roster.draft;
+          A().change(function () { dates.forEach(function (d) { var t = draft[d] || 'off'; if (t === 'off') delete S().shifts[d]; else S().shifts[d] = t; }); }, 'Roster applied. Your plan now follows it.');
+          roster.draft = null; roster.msg = ''; A().render();
+        } }, 'Apply to my calendar'),
+        h('button', { class: 'btn', type: 'button', onclick: function () { roster.draft = null; A().render(); } }, 'Discard')));
+  }
+  function readPhoto(file) {
+    if (!file) { A().toast('Choose a photo of the roster first.'); return; }
+    if (!/^image\//.test(file.type)) { A().toast('That file isn\u2019t an image.'); return; }
+    roster.busy = true; roster.msg = ''; A().render();
+    var who = S().settings.rosterName ? 'the row or column for "' + S().settings.rosterName + '"' : 'the single person\u2019s schedule shown (if several people are listed, use the first row and say so)';
+    var prompt = 'This is a photo of a work shift roster for ' + roster.month + ' (year-month). Read ' + who + '.\n' +
+      'Shifts are 12 hours: day shift 07:00-19:00, night shift 19:00-07:00. Map codes like D, Day, M, 7-19 to "day"; N, Night, 19-7 to "night"; O, Off, R, Rest, L, AL, Leave, blank or dash to "off".\n' +
+      'Reply with only JSON: {"name":"name as written or empty","days":[{"date":"YYYY-MM-DD","shift":"day|night|off"}],"note":"anything unclear, or empty"}. Include every date of the month that you can read.';
+    ui.claude.json(prompt, { images: [file], modelTier: 'default' }).then(function (out) {
+      var days = out && Array.isArray(out.days) ? out.days : [];
+      var draft = {};
+      days.forEach(function (x) {
+        if (x && typeof x.date === 'string' && x.date.slice(0, 7) === roster.month && Sch.isIso(x.date) && ['day', 'night', 'off'].indexOf(x.shift) >= 0) draft[x.date] = x.shift;
+      });
+      if (!Object.keys(draft).length) throw { code: 'empty' };
+      roster.draft = draft;
+      roster.msg = (out.note ? 'Claude noted: ' + String(out.note).slice(0, 200) + ' ' : '') + (out.name ? 'Read the row for ' + String(out.name).slice(0, 60) + '.' : '');
+    }).catch(function (e) {
+      roster.msg = e && e.code === 'rate_limited' ? 'Claude is busy right now. Try again in a little while.' : 'Couldn\u2019t read shifts from that photo. Try a sharper, straight-on photo, or paste the codes.';
+    }).then(function () { roster.busy = false; A().render(); });
+  }
+
   root.SR = root.SR || {};
-  root.SR.capture = { init: init, renderCapture: renderCapture, renderBriefing: renderBriefing, renderProjects: renderProjects, ui: ui };
+  root.SR.capture = { renderRosterImport: renderRosterImport, init: init, renderCapture: renderCapture, renderBriefing: renderBriefing, renderProjects: renderProjects, ui: ui };
 })(this);

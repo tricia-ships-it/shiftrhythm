@@ -12,7 +12,15 @@ Everything runs on your own device. There's no account, server, analytics or net
 - **Automatic project breakdown.** A task with a deadline is broken into sensible steps for its kind of work (events, content, security assessments, writing, study, outreach). Each step gets its own window of days, finishing a little before the deadline, and is fitted around your shifts. You see where every step will land, and if it won't all fit, the smallest deadline that would work.
 - **Daily briefing.** Your shift, when to leave, recovery sleep, what's left today, how each project is going (on track or behind), and your weekly goals so far.
 - **Optional extras inside Claude.** When opened inside Claude, there's also a *Refine steps with Claude* button and an *Ask Claude how to approach today* button. The standalone app never uses them.
-- **Shift-aware days.** It handles day shifts, night shifts that cross midnight, travel time, time to get ready, sleep after a night shift, and a nap before the first night of a run.
+- **Shift-aware days that follow how you actually sleep.** It handles day shifts, night shifts that cross midnight, travel time and time to get ready. You set your own times for:
+  - waking on a normal off day (for example 06:00);
+  - waking the morning after a day shift (for example 10:00);
+  - after a night shift, staying up for a while and then resting in the afternoon (for example 12:30–17:00) before sleeping again at bedtime;
+  - sleeping through the day between back-to-back nights, and a nap before the first night of a run.
+- **Settling-in and handover.** Work tasks keep clear of the first and last part of each shift, and follow your focus rhythm in between.
+- **Morning routine.** Tasks set to *first thing after waking* run back to back from your wake time, in order: for example exercise, wash, breakfast, cleaning, voice training.
+- **Two kinds of off day.** Each task can be allowed or blocked separately on a normal off day and on the first off day after a shift, alongside day-shift and night-shift days.
+- **Monthly roster import.** Paste your codes for the month (`D D N N O O…` or `1 D, 2 N…`), check them on a calendar, and apply. Inside Claude you can upload a photo of the roster instead, and Claude reads your row.
 - **Recurring tasks, scheduled automatically.** Set something to repeat *n* times per day, week or month. ShiftRhythm spreads it across the allowed days and resets each day, week and month.
 - **Rules for each task:**
   - which kinds of day it's allowed on: off days, day-shift days, night-shift days, each set to yes, no or *weekends only* (for example, choir rehearsal only on off days or on weekend shifts);
