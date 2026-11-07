@@ -1,0 +1,6 @@
+.DS_Store
+Thumbs.db
+*.srbackup
+shiftrhythm-backup-*.json
+*.ics
+node_modules/

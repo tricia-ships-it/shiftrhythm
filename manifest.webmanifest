@@ -1,0 +1,13 @@
+{
+  "name": "ShiftRhythm",
+  "short_name": "ShiftRhythm",
+  "description": "A private, offline planner that schedules your routines around rotating day and night shifts.",
+  "start_url": "./index.html#today",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3F4F8",
+  "theme_color": "#2F6F62",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

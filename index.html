@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Locks the app down: only its own files may load, and it may not connect anywhere. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#2F6F62">
+  <meta name="description" content="A private, offline planner that schedules your routines around rotating day and night shifts.">
+  <title>ShiftRhythm</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="inner">
+      <div class="brand"><img src="icons/icon.svg" alt=""><h1>ShiftRhythm</h1></div>
+      <span class="chip" id="todayChip">Today</span>
+      <nav class="tabs" id="nav" aria-label="Sections">
+        <a href="#today">Today</a>
+        <a href="#week">Week</a>
+        <a href="#tasks">Tasks</a>
+        <a href="#shifts">Shifts</a>
+        <a href="#settings">Settings</a>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap" id="main" tabindex="-1">
+    <noscript>ShiftRhythm needs JavaScript turned on. It runs entirely on your device.</noscript>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="js/scheduler.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/alarm.js"></script>
+  <script src="js/ics.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

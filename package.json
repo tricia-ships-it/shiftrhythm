@@ -1,0 +1,11 @@
+{
+  "name": "shiftrhythm",
+  "version": "1.0.0",
+  "description": "A private, offline planner that schedules your routines around rotating day and night shifts.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "python3 -m http.server 8642 --bind 127.0.0.1"
+  }
+}
