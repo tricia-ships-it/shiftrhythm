@@ -20,7 +20,7 @@ Everything runs on your own device. There is no account, server or analytics, an
 - **Say it, it plans it.** Type or speak what's coming up, for example *"Plan the Builders Circle event by 28 Nov, about 8 hours. Call the venue tomorrow at 3pm. Gym 3 times a week."* ShiftRhythm works out each item: the deadline, how long it takes, whether it's a work task, whether it repeats, and how urgent it is.
 - **Automatic project breakdown.** A task with a deadline is broken into sensible steps for its kind of work (events, content, security assessments, writing, study, outreach). Each step gets its own window of days, finishing a little before the deadline, and is fitted around your shifts. You see where every step will land, and if it won't all fit, the smallest deadline that would work.
 - **Daily briefing.** Your shift, when to leave, recovery sleep, what's left today, how each project is going (on track or behind), and your weekly goals so far.
-- **Optional extras inside Claude.** When opened inside Claude, there's also a *Refine steps with Claude* button and an *Ask Claude how to approach today* button. The standalone app never uses them.
+- **Rhythm Coach.** Built-in intelligence that runs on your device, with no AI service and nothing sent anywhere. It reads today's plan, your shifts, sleep, projects and streak, and tells you how to approach the day: what to do first, what to protect, what to drop if your energy dips, and when to wind down. It updates as your day changes.
 - **Shift-aware days that follow how you actually sleep.** It handles day shifts, night shifts that cross midnight, travel time and time to get ready. You set your own times for:
   - waking on a normal off day (for example 06:00);
   - waking the morning after a day shift (for example 10:00);
@@ -29,7 +29,7 @@ Everything runs on your own device. There is no account, server or analytics, an
 - **Settling-in and handover.** Work tasks keep clear of the first and last part of each shift, and follow your focus rhythm in between.
 - **Morning routine.** Tasks set to *first thing after waking* run back to back from your wake time, in order: for example exercise, wash, breakfast, cleaning, voice training.
 - **Two kinds of off day.** Each task can be allowed or blocked separately on a normal off day and on the first off day after a shift, alongside day-shift and night-shift days.
-- **Monthly roster import.** Paste your codes for the month (`D D N N O O…` or `1 D, 2 N…`), check them on a calendar, and apply. Inside Claude you can upload a photo of the roster instead, and Claude reads your row.
+- **Monthly roster import.** Paste your codes for the month (`D D N N O O…` or `1 D, 2 N…`), check them on a calendar, and apply.
 - **Recurring tasks, scheduled automatically.** Set something to repeat *n* times per day, week or month. ShiftRhythm spreads it across the allowed days and resets each day, week and month.
 - **Rules for each task:**
   - which kinds of day it's allowed on: off days, day-shift days, night-shift days, each set to yes, no or *weekends only* (for example, choir rehearsal only on off days or on weekend shifts);
@@ -101,7 +101,7 @@ The welcome screen walks you through it in about three minutes:
   - **Shift ends or ended at…** — finishing early or staying late moves your travel home and your evening.
   - **Undo changes** puts the day back to the original plan.
 - **Week** shows the whole week day by day, plus **hours by area** against each area's target. Tap **Edit areas** there to change targets or fixed times, or add an area.
-- Check the **briefing** at the top of Today each morning: your shift, when to leave, what's left, how each project is going.
+- Read the **Rhythm Coach** card for how to approach the day, and the **briefing**: your shift, when to leave, what's left, how each project is going.
 
 ### Step 4. Add things as they come up
 
@@ -116,7 +116,7 @@ For a recurring task, open **Tasks**, add or edit it and choose how often it rep
 ### Step 5. Import your roster each month (shift workers)
 
 1. Open **Shifts → Import this month's roster**.
-2. Paste your codes, for example `D D N N O O O D D N N O O O…` or `1 D, 2 N, 3 O…`. (Inside Claude you can upload a photo of the roster instead.)
+2. Paste your codes, for example `D D N N O O O D D N N O O O…` or `1 D, 2 N, 3 O…`.
 3. Check the preview calendar, then **Apply to my calendar**. Tap any single day on the calendar to change it later.
 
 ### Step 6. Sync your phones and laptop
@@ -196,6 +196,7 @@ index.html            app shell and Content Security Policy
 css/app.css           styles (light and dark)
 js/scheduler.js       planning engine (pure, testable in Node)
 js/smart.js           understands typed/spoken tasks and breaks projects into steps (local rules)
+js/coach.js           Rhythm Coach: how to approach today (local rules)
 js/capture.js         capture panel, projects, daily briefing, voice typing, roster import
 js/sync.js            end-to-end encrypted sync via a private GitHub repository
 js/rewards.js         streaks, coins and streak freezes

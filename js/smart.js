@@ -6,8 +6,7 @@
  *  breakdown(task)  splits a task with a deadline into sensible steps and gives each
  *                   step a window of days, so the work is spread out before the deadline.
  *
- * No AI service and no network: it uses rules and templates. Inside Claude, the app can
- * optionally ask Claude to refine the step list; the scheduling still happens here.
+ * No AI service and no network: it uses rules and templates.
  */
 (function (root) {
   'use strict';

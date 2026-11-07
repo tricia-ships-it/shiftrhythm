@@ -354,9 +354,19 @@
         h('span', { class: 'muted small', text: doneN + ' of ' + todayTasks.length + ' task blocks done' })),
       list);
 
-    var side = h('div', { class: 'stack' }, nowCard, renderDrift(), renderStreakCard(rs), root.SR.capture.renderBriefing(), renderUnplaced());
+    var side = h('div', { class: 'stack' }, nowCard, renderCoach(rs), renderDrift(), renderStreakCard(rs), root.SR.capture.renderBriefing(), renderUnplaced());
     return h('div', { class: 'stack' }, hero, quick, h('div', { class: 'grid2' }, timeline, side));
   }
+  // ---------- Rhythm Coach: how to approach today, worked out on this device ----------
+  function renderCoach(rs) {
+    if (!root.SR.coach) return null;
+    var tips = root.SR.coach.coach({ plan: plan, today: todayIso(), nowMin: nowMin(), projects: root.SR.capture.projects(), need: rs && rs.today ? rs.today.need : 0, workWord: workWord() });
+    return h('section', { class: 'card coach', 'aria-labelledby': 'coH' },
+      h('h3', { id: 'coH', text: 'Rhythm Coach' }),
+      h('ul', { class: 'tips' }, tips.map(function (x) { return h('li', {}, h('span', { class: 'ti', 'aria-hidden': 'true', text: x.icon }), h('span', { text: x.text })); })),
+      h('p', { class: 'small muted', text: 'Worked out on your device from your plan, sleep and progress. Updates as your day changes.' }));
+  }
+
   // ---------- the day drifted: say what actually happened, the rest of the day is replanned ----------
   function round5(m) { return Math.ceil(m / 5) * 5; }
   function adjFor(d) { state.adjust = state.adjust || {}; return state.adjust[d] || (state.adjust[d] = {}); }

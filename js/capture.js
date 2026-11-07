@@ -3,27 +3,25 @@
  *
  * Say or type what's coming up -> ShiftRhythm works out each task, breaks big ones
  * into steps, spreads them before the deadline and checks that they fit.
- * All of this runs on your device. Two optional extras only appear when the app is
- * opened inside Claude: "Refine with Claude" and "Ask Claude about my day".
+ * All of this runs on your device.
  */
 (function (root) {
   'use strict';
   var A = function () { return root.SR.app; }; // filled in by app.js
   var Sch = root.SR.scheduler, Smart = root.SR.smart, St = root.SR.store;
-  var ui = { proposals: [], text: '', listening: false, voiceHelp: '', claude: null, advice: '', adviceBusy: false, refining: '' };
+  var ui = { proposals: [], text: '', listening: false, voiceHelp: '', reader: null, readerImages: false };
   var Rec = root.SpeechRecognition || root.webkitSpeechRecognition;
   var rec = null;
 
   function h() { return A().h.apply(null, arguments); }
   function S() { return A().state(); }
 
-  // ---------- Claude (only inside Claude) ----------
+  // ---------- photo reader (only in the hosted preview, where a reader is provided) ----------
   function init() {
     if (root.claude && typeof root.claude.use === 'function') {
       root.claude.use('sample').then(function (s) {
         if (!s) return;
-        ui.claude = s; A().render();
-        return s.limits().then(function (l) { ui.claudeImages = !!(l && l.images); A().render(); }).catch(function () {});
+        return s.limits().then(function (l) { if (l && l.images) { ui.reader = s; ui.readerImages = true; A().render(); } }).catch(function () {});
       }).catch(function () {});
     }
   }
@@ -184,7 +182,6 @@
         box.append(h('p', { class: 'small ok', text: 'Everything fits before the deadline.' }));
       }
       var acts = h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { addProject(pr); } }, 'Add project to my plan'));
-      if (ui.claude) acts.append(h('button', { class: 'btn', type: 'button', disabled: ui.refining === pr.id, onclick: function () { refine(pr); } }, ui.refining === pr.id ? 'Asking Claude\u2026' : 'Refine steps with Claude'));
       box.append(acts);
     } else if (pr.kind === 'recurring') {
       var times = h('input', { type: 'number', min: '1', max: '14', value: String(pr.recurrence.times), onchange: function (e) { pr.recurrence.times = Math.max(1, Math.min(14, Number(e.target.value) || 1)); } });
@@ -236,27 +233,6 @@
     ui.text = '';
     A().render();
     A().toast(n + ' items added. Plan recalculated.');
-  }
-
-  function refine(pr) {
-    if (!ui.claude) return;
-    ui.refining = pr.id; A().render();
-    var prompt = 'Break this task into practical, specific steps for a busy person.\n' +
-      'Task: ' + pr.title + '\nKind of work: ' + pr.typeLabel + '\nTotal time to spend: ' + pr.minutes + ' minutes\n' +
-      'Deadline: ' + pr.due + ' (today is ' + A().todayIso() + ')\n' + (pr.when === 'during' ? 'Done during ' + A().workWord() + '.\n' : 'Done in personal time.\n') +
-      'Rules: 4 to 10 steps in the order they should happen. Each title is a short instruction (at most 8 words) specific to this task. ' +
-      'Minutes per step are multiples of 5, at least 15, adding up to about ' + pr.minutes + '.\n' +
-      'Reply with only JSON like {"steps":[{"title":"Confirm venue and date","minutes":60}]}';
-    ui.claude.json(prompt, { modelTier: 'quick' }).then(function (out) {
-      var steps = (out && Array.isArray(out.steps) ? out.steps : []).filter(function (s) { return s && typeof s.title === 'string'; }).slice(0, 12)
-        .map(function (s) { return { title: s.title.trim().slice(0, 80), minutes: Math.max(15, Math.min(480, Math.round((Number(s.minutes) || 30) / 5) * 5)) }; });
-      if (steps.length < 2) throw { code: 'invalid_json' };
-      rebuild(pr, steps);
-      pr.minutes = pr.steps.reduce(function (a, x) { return a + x.minutes; }, 0);
-      A().toast('Claude refined the steps.');
-    }).catch(function (e) {
-      A().toast(e && e.code === 'rate_limited' ? 'Claude is busy. Try again in a bit.' : 'Couldn\u2019t get steps from Claude. The built-in steps are still there.');
-    }).then(function () { ui.refining = ''; A().render(); });
   }
 
   // ---------- voice ----------
@@ -403,26 +379,8 @@
   function renderBriefing() {
     var card = h('section', { class: 'card', 'aria-labelledby': 'brH' }, h('h3', { id: 'brH', text: 'Your briefing' }),
       h('ul', { class: 'brief' }, briefing().map(function (l) { return h('li', { text: l }); })));
-    if (ui.claude) {
-      var out = h('p', { class: 'advice small', text: ui.advice });
-      if (!ui.advice) out.hidden = true;
-      card.append(h('div', { class: 'row' }, h('button', { class: 'btn small', type: 'button', disabled: ui.adviceBusy, onclick: function () { askAdvice(out); } }, ui.adviceBusy ? 'Thinking\u2026' : 'Ask Claude how to approach today')), out);
-    }
     return card;
   }
-  function askAdvice(out) {
-    var app = A(), plan = app.plan(), t = app.todayIso();
-    var blocks = plan.blocks.filter(function (b) { return b.date === t && b.kind !== 'break'; }).map(function (b) { return b.startTime + '\u2013' + b.endTime + ' ' + b.title + (b.done ? ' (done)' : ''); });
-    var who = A().mode() === 'shifts' ? 'I work rotating day and night shifts.' : A().mode() === 'regular' ? 'I have a regular schedule (' + A().workLabel() + ').' : 'I don\u2019t have fixed commitments right now.';
-    var prompt = who + ' Here is my plan for today (' + t + '), already scheduled around my commitments and sleep:\n' + blocks.join('\n') +
-      '\n\nBriefing: ' + briefing().join(' ') +
-      '\n\nIn at most 5 short bullet lines, tell me how to approach today: what to protect, what to do first, and one thing to drop if energy is low. Plain text, no markdown headings.';
-    ui.adviceBusy = true; out.hidden = false; out.textContent = 'Thinking\u2026';
-    ui.claude(prompt, { cache: false, onText: function (u) { out.textContent = u.text; } }).then(function (r) { ui.advice = r.text; })
-      .catch(function (e) { ui.advice = e && e.code === 'rate_limited' ? 'Claude is busy right now. Try again later.' : 'Couldn\u2019t reach Claude.'; })
-      .then(function () { ui.adviceBusy = false; app.render(); });
-  }
-
   // ---------- roster import ----------
   var roster = { month: '', draft: null, busy: false, msg: '' };
   function defaultMonth() {
@@ -437,12 +395,12 @@
     var name = h('input', { type: 'text', id: 'rosterName', value: S().settings.rosterName || '', placeholder: 'e.g. Patricia A.', onchange: function (e) { var v = e.target.value.trim(); A().change(function () { S().settings.rosterName = v; }); } });
     var box = h('div', { class: 'stack' },
       h('div', { class: 'fields' }, field('Month', month), field('Your name on the roster', name)));
-    if (ui.claude && ui.claudeImages) {
+    if (ui.reader && ui.readerImages) {
       var file = h('input', { type: 'file', id: 'rosterPhoto', accept: 'image/*' });
       box.append(h('div', { class: 'stack' },
         h('label', { class: 'field' }, h('span', {}, 'Photo of the roster'), file),
         h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', disabled: roster.busy, onclick: function () { readPhoto(file.files && file.files[0]); } }, roster.busy ? 'Reading the roster…' : 'Read my shifts from the photo')),
-        h('p', { class: 'small muted', text: 'Claude reads the photo and finds your row. You check the result before anything changes. The standalone app can\u2019t read photos on its own, so there you paste the codes instead.' })));
+        h('p', { class: 'small muted', text: 'The photo is read and your row is found. You check the result before anything changes. Photo reading is only available in this preview; the installed app uses pasted codes.' })));
     }
     var codes = h('textarea', { id: 'rosterCodes', rows: '2', placeholder: 'Or paste your codes for the month, e.g. D D N N O O O O D D N N…  or  1 D, 2 D, 3 N…' });
     box.append(codes, h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () {
@@ -492,7 +450,7 @@
     var prompt = 'This is a photo of a work shift roster for ' + roster.month + ' (year-month). Read ' + who + '.\n' +
       'Shifts are 12 hours: day shift 07:00-19:00, night shift 19:00-07:00. Map codes like D, Day, M, 7-19 to "day"; N, Night, 19-7 to "night"; O, Off, R, Rest, L, AL, Leave, blank or dash to "off".\n' +
       'Reply with only JSON: {"name":"name as written or empty","days":[{"date":"YYYY-MM-DD","shift":"day|night|off"}],"note":"anything unclear, or empty"}. Include every date of the month that you can read.';
-    ui.claude.json(prompt, { images: [file], modelTier: 'default' }).then(function (out) {
+    ui.reader.json(prompt, { images: [file], modelTier: 'default' }).then(function (out) {
       var days = out && Array.isArray(out.days) ? out.days : [];
       var draft = {};
       days.forEach(function (x) {
@@ -500,12 +458,12 @@
       });
       if (!Object.keys(draft).length) throw { code: 'empty' };
       roster.draft = draft;
-      roster.msg = (out.note ? 'Claude noted: ' + String(out.note).slice(0, 200) + ' ' : '') + (out.name ? 'Read the row for ' + String(out.name).slice(0, 60) + '.' : '');
+      roster.msg = (out.note ? 'Note: ' + String(out.note).slice(0, 200) + ' ' : '') + (out.name ? 'Read the row for ' + String(out.name).slice(0, 60) + '.' : '');
     }).catch(function (e) {
-      roster.msg = e && e.code === 'rate_limited' ? 'Claude is busy right now. Try again in a little while.' : 'Couldn\u2019t read shifts from that photo. Try a sharper, straight-on photo, or paste the codes.';
+      roster.msg = e && e.code === 'rate_limited' ? 'The photo reader is busy right now. Try again in a little while.' : 'Couldn\u2019t read shifts from that photo. Try a sharper, straight-on photo, or paste the codes.';
     }).then(function () { roster.busy = false; A().render(); });
   }
 
   root.SR = root.SR || {};
-  root.SR.capture = { renderRosterImport: renderRosterImport, init: init, renderCapture: renderCapture, renderBriefing: renderBriefing, renderProjects: renderProjects, ui: ui };
+  root.SR.capture = { projects: projects, renderRosterImport: renderRosterImport, init: init, renderCapture: renderCapture, renderBriefing: renderBriefing, renderProjects: renderProjects, ui: ui };
 })(this);

@@ -362,3 +362,9 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; 
 .suggest .idea.on { border-color: color-mix(in srgb, var(--ok, #16a34a) 50%, transparent); background: color-mix(in srgb, var(--ok, #16a34a) 10%, var(--surface)); cursor: default; }
 .suggest .strong { font-weight: 700; margin-top: 4px; }
 #areasH, #lifeH { scroll-margin-top: 84px; }
+
+/* Rhythm Coach */
+.coach { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 70%); }
+.coach .tips { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 10px; }
+.coach .tips li { display: grid; grid-template-columns: 1.6em minmax(0, 1fr); gap: 6px; line-height: 1.45; }
+.coach .ti { font-size: 1.1rem; line-height: 1.3; }
