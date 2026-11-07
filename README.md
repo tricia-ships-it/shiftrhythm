@@ -32,6 +32,8 @@ Everything runs on your own device. There's no account, server, analytics or net
 - **Could not fit.** Anything that doesn't fit is listed with the reason.
 - **Alarms.** A chime (bells, marimba or bubbles, all synthesized in the browser) and a notification when a focus session, break, getting ready, travel, nap or bedtime starts. There's an optional heads-up a few minutes before tasks, plus snooze.
 - **Send to phone calendar.** Exports the plan as an `.ics` file with alarms, so your phone's calendar can remind you even when ShiftRhythm is closed.
+- **Encrypted sync between your devices.** Your phone and laptop share the same plan through a private GitHub repository of your own. Everything is encrypted on the device with your passphrase (AES-GCM 256), so GitHub only stores scrambled data. The token you create can only touch that one repository. Ticks and new tasks from both devices are merged, and nothing you finished is lost.
+- **Colourful light and dark themes.** The day's colours follow your shift: sunrise for day shifts, twilight for nights, fresh greens for off days. There's a progress ring, a streak counter and a little confetti when you finish something. Switch between Auto, Light and Dark from the top bar.
 - **Backups.** Save your data to a file, optionally encrypted with a passphrase (AES-GCM 256, PBKDF2-SHA-256), and restore it on another device.
 - **Works offline** and can be installed as an app (PWA).
 
@@ -48,6 +50,17 @@ You need Python 3, which macOS and most Linux systems already have. On Windows, 
 The server listens on `127.0.0.1` only, so other devices on your network can't reach it.
 
 You can also double-click `index.html` to open it straight from the file. Planning works that way, but browsers block notifications and offline install for files, so the launcher is better.
+
+## Sync your phone and laptop
+
+1. On GitHub, create a new **private** repository called `shiftrhythm-data` and leave it empty.
+2. Create a fine-grained token at <https://github.com/settings/personal-access-tokens/new>:
+   - Repository access: **Only select repositories → shiftrhythm-data**
+   - Permissions → Repository permissions: **Contents: Read and write**. Nothing else.
+3. In ShiftRhythm, open **Settings → Sync your devices**. Enter your username, the token and a passphrase, then connect.
+4. Do the same on your other device with the **same passphrase**.
+
+The app syncs when you open it, when you come back to it, and a few seconds after each change. If you forget the passphrase, nobody can read the synced copy, but each device still keeps its own.
 
 ## Use it on your phone
 
@@ -72,7 +85,8 @@ The planning window runs from today to the end of next week, so weekly goals are
 ## Privacy and security
 
 - **Voice typing is opt-in.** The *Speak* button uses your browser's speech recognition only after you turn it on. Chrome and Edge send that audio to Google or Microsoft. Your keyboard's own dictation works without it.
-- **No network.** The page's Content Security Policy sets `connect-src 'none'` and only allows its own scripts. Even a bug or an injected script can't send data anywhere.
+- **One allowed destination.** The page's Content Security Policy only lets the app contact `api.github.com`, and only for sync. It only allows its own scripts. With sync off, it makes no network requests at all.
+- **End-to-end encrypted sync.** The key comes from your passphrase (PBKDF2-SHA-256, 310,000 rounds) and is stored in the browser as a *non-extractable* key. Data is sealed with AES-GCM, so tampering is detected. The passphrase is never stored, and the token is never written into your plan or backups.
 - **No dependencies.** It's plain JavaScript with no frameworks, packages, CDNs or web fonts, so there's no supply chain to compromise. The whole app is under 2,000 lines you can read.
 - **Untrusted input is handled safely.** All text is rendered with `textContent`, never `innerHTML`, and imported backups are validated field by field.
 - **Your data stays local** in the browser's `localStorage` on your device. Anyone with access to your unlocked device and browser profile can read it, so use your device's screen lock. Encrypted backups protect the files you save.
@@ -93,7 +107,8 @@ index.html            app shell and Content Security Policy
 css/app.css           styles (light and dark)
 js/scheduler.js       planning engine (pure, testable in Node)
 js/smart.js           understands typed/spoken tasks and breaks projects into steps (local rules)
-js/capture.js         capture panel, projects, daily briefing, voice typing
+js/capture.js         capture panel, projects, daily briefing, voice typing, roster import
+js/sync.js            end-to-end encrypted sync via a private GitHub repository
 js/store.js           local storage, validation, encrypted backups
 js/alarm.js           chimes (Web Audio) and notifications
 js/ics.js             calendar export

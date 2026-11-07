@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- Locks the app down: only its own files may load, and it may not connect anywhere. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src https://api.github.com; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#2F6F62">
   <meta name="description" content="A private, offline planner that schedules your routines around rotating day and night shifts.">
@@ -17,14 +17,15 @@
   <header class="topbar">
     <div class="inner">
       <div class="brand"><img src="icons/icon.svg" alt=""><h1>ShiftRhythm</h1></div>
-      <span class="chip" id="todayChip">Today</span>
+      <span class="chip" id="todayChip" hidden>Today</span>
       <nav class="tabs" id="nav" aria-label="Sections">
-        <a href="#today">Today</a>
-        <a href="#week">Week</a>
-        <a href="#tasks">Tasks</a>
-        <a href="#shifts">Shifts</a>
-        <a href="#settings">Settings</a>
+        <a href="#today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M7 7 5.6 5.6M18.4 18.4 17 17M7 17l-1.4 1.4M18.4 5.6 17 7M15.5 12a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"/></svg>Today</a>
+        <a href="#week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>Week</a>
+        <a href="#tasks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>Tasks</a>
+        <a href="#shifts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Shifts</a>
+        <a href="#settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>Settings</a>
       </nav>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Theme"></button>
     </div>
   </header>
   <main class="wrap" id="main" tabindex="-1">
@@ -37,6 +38,7 @@
   <script src="js/alarm.js"></script>
   <script src="js/ics.js"></script>
   <script src="js/capture.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

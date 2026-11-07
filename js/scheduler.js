@@ -96,6 +96,8 @@
     chime: 'bells',
     headsUpMin: 5,
     maxSession: 120,       // longest single sitting for a project step
+    name: '',
+    theme: 'auto',
     voice: false           // browser voice typing (opt-in: it uses an online speech service)
   };
   var TIME_OF_DAY = {
@@ -412,8 +414,11 @@
           var cap = capFor(d);
           if (load[d] + it.duration > cap) continue;
           var st = routineEnd[d] != null ? routineEnd[d] : wakeAt[d];
-          if (nowAbs != null && st < nowAbs) continue;
-          if (!contained(free[d], st, st + it.duration)) continue;
+          if (nowAbs != null && st < nowAbs) st = Math.ceil(nowAbs / 5) * 5; // opened late: the rest of the routine starts now, still in order
+          var fit = null;
+          for (var q = 0; q < free[d].length && fit == null; q++) { var fs0 = Math.max(free[d][q].s, st); if (free[d][q].e - fs0 >= it.duration) fit = fs0; }
+          if (fit == null || fit - st > 180) continue; // keep the routine together, not hours later
+          st = fit;
           free[d] = subtract(free[d], st, st + it.duration);
           load[d] += it.duration;
           routineEnd[d] = st + it.duration;

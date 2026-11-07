@@ -347,12 +347,12 @@
           return h('div', { class: 'item' }, h('div', { class: 'body' }, h('span', { class: 'title' + (o.done ? ' muted' : ''), text: (o.done ? '\u2713 ' : '') + o.title.split(' \u00b7 ')[0] }),
             h('span', { class: 'muted small', text: A().dur(o.durationMin) + ' \u00b7 ' + (o.after ? A().dayLabel(o.after) + '\u2013' + A().dayLabel(o.due) : '') })));
         }));
-      card.append(h('div', { class: 'project' },
+      card.append(A().tint(h('div', { class: 'project' },
         h('div', { class: 'spread' }, h('strong', { text: p.title }),
           h('span', { class: 'chip ' + (p.status === 'behind' ? 'warn' : 'off'), text: p.status === 'done' ? 'Done' : p.status === 'behind' ? 'Behind' : 'On track' })),
         h('div', { class: 'bar' }, bar),
         h('div', { class: 'small muted', text: 'Due ' + A().dayLabel(p.deadline) + ' \u00b7 ' + A().dur(p.doneMin) + ' of ' + A().dur(p.totalMin) + ' done' + (p.next ? ' \u00b7 next: ' + p.next.title.split(' \u00b7 ')[0] : '') }),
-        h('div', { class: 'spread' }, steps, del)));
+        h('div', { class: 'spread' }, steps, del)), A().colorVar(p.id)));
     });
     return card;
   }

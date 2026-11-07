@@ -201,3 +201,25 @@ test('work tasks stay clear of shift start and end', () => {
   assert.ok(S.hm(ok.endTime) <= S.hm('18:30'));
   assert.equal(mk(660).unplaced.length, 1, '11 h does not fit in a 12 h shift minus 75 min');
 });
+
+test('opened after wake time: the rest of the routine starts now, in order', () => {
+  const only = { off: 'yes', recovery: 'no', day: 'no', night: 'no' };
+  const p = plan({ recurring: [
+    { id: 'ex', title: 'Exercise', durationMin: 45, per: 'day', times: 1, timeOfDay: 'wake', allow: only },
+    { id: 'bf', title: 'Breakfast', durationMin: 30, per: 'day', times: 1, timeOfDay: 'wake', allow: only },
+    { id: 'pr', title: 'Project work', durationMin: 30, per: 'day', times: 1, priority: 1, allow: only }
+  ] }, { today: '2026-11-14', nowMin: 9 * 60 + 3 });
+  const t = p.blocks.filter(b => b.kind === 'task' && b.date === '2026-11-14').map(b => b.title + ' ' + b.startTime);
+  assert.deepEqual(t.slice(0, 2), ['Exercise 09:05', 'Breakfast 09:50']);
+});
+
+test('routine continues after an item that was already ticked off', () => {
+  const only = { off: 'yes', recovery: 'no', day: 'no', night: 'no' };
+  const p = plan({ recurring: [
+    { id: 'ex', title: 'Exercise', durationMin: 45, per: 'day', times: 1, timeOfDay: 'wake', allow: only },
+    { id: 'bf', title: 'Breakfast', durationMin: 30, per: 'day', times: 1, timeOfDay: 'wake', allow: only }
+  ], log: { 'ex@D2026-11-14#0': { status: 'done', date: '2026-11-14', start: '09:05', end: '09:50', title: 'Exercise', taskId: 'ex' } } },
+  { today: '2026-11-14', nowMin: 9 * 60 + 6 });
+  const bf = p.blocks.find(b => b.title === 'Breakfast' && b.date === '2026-11-14');
+  assert.equal(bf.startTime, '09:50');
+});

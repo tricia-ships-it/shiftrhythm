@@ -73,6 +73,7 @@
     var s = blank();
     if (!raw || typeof raw !== 'object') return s;
     s.setupDone = !!raw.setupDone;
+    s.updatedAt = num(raw.updatedAt, 0, 9e15, 0);
     var D = root.SR.scheduler.DEFAULT_SETTINGS, r = raw.settings || {};
     var st = s.settings;
     ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'shiftEndBufferMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'capRecoveryDay', 'headsUpMin'].forEach(function (k) {
@@ -80,6 +81,8 @@
     });
     ['wakeAfterDayShift', 'bedtime', 'postNightSleep', 'postNightWake'].forEach(function (k) { st[k] = HM.test(r[k] || '') ? r[k] : D[k]; });
     st.rosterName = str(r.rosterName, 60);
+    st.name = str(r.name, 40);
+    st.theme = oneOf(r.theme, ['auto', 'light', 'dark'], 'auto');
     st.sleepHours = num(r.sleepHours, 3, 12, D.sleepHours);
     st.volume = num(r.volume, 0, 1, D.volume);
     st.sound = r.sound !== false;

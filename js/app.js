@@ -44,7 +44,11 @@
   function dur(m) { m = Math.round(m); if (m < 60) return m + ' min'; var hh = Math.floor(m / 60), mm = m % 60; return hh + ' h' + (mm ? ' ' + mm + ' min' : ''); }
   var SHIFT_LABEL = { day: 'Day shift', night: 'Night shift', off: 'Off day' };
   var SHORT = { day: 'Day', night: 'Night', off: 'Off' };
-  function save() { if (!St.save(state)) toast('Could not save. Your browser storage may be full or blocked.'); }
+  function save() {
+    state.updatedAt = Date.now();
+    if (!St.save(state)) { toast('Could not save. Your browser storage may be full or blocked.'); return; }
+    if (root.SR.sync) root.SR.sync.changed();
+  }
   function toast(msg) {
     var t = doc.getElementById('toast');
     t.textContent = msg; t.hidden = false;
@@ -57,6 +61,84 @@
     doc.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
+
+  // ---------- look and feel ----------
+  var PALETTE = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7', '--c8'];
+  function colorVar(id) {
+    var str = String(id || ''), x = 0;
+    for (var i = 0; i < str.length; i++) x = (x * 31 + str.charCodeAt(i)) >>> 0;
+    return 'var(' + PALETTE[x % PALETTE.length] + ')';
+  }
+  function taskColor(b) { return colorVar(b.project || b.taskId || b.key || b.title); }
+  function tint(el, c) { el.style.setProperty('--c', c); return el; }
+  function streak() {
+    var days = {};
+    Object.keys(state.log).forEach(function (k) { var L = state.log[k]; if (L.status === 'done' && L.date) days[L.date] = true; });
+    var d = todayIso(), n = 0;
+    if (!days[d]) d = Sch.addDays(d, -1);
+    while (days[d]) { n++; d = Sch.addDays(d, -1); }
+    return n;
+  }
+  var themeSetByApp = false;
+  function applyTheme() {
+    var t = state.settings.theme || 'auto', el = doc.documentElement;
+    if (t === 'auto') { if (themeSetByApp) { el.removeAttribute('data-theme'); themeSetByApp = false; } }
+    else { el.setAttribute('data-theme', t); themeSetByApp = true; }
+    var btn = doc.getElementById('themeBtn');
+    if (btn) {
+      btn.replaceChildren(icon(t === 'dark' ? 'moon' : t === 'light' ? 'sun' : 'auto'));
+      btn.setAttribute('aria-label', 'Theme: ' + (t === 'auto' ? 'automatic' : t) + '. Tap to change.');
+      btn.title = 'Theme: ' + (t === 'auto' ? 'Auto' : t === 'dark' ? 'Dark' : 'Light');
+    }
+  }
+  function cycleTheme() {
+    var order = ['auto', 'light', 'dark'], cur = state.settings.theme || 'auto';
+    var nx = order[(order.indexOf(cur) + 1) % 3];
+    state.settings.theme = nx; save(); applyTheme();
+    toast(nx === 'auto' ? 'Theme follows your device' : nx === 'dark' ? 'Dark mode' : 'Light mode');
+  }
+  var ICONS = {
+    sun: 'M12 4V2M12 22v-2M4.9 4.9 3.5 3.5M20.5 20.5l-1.4-1.4M4 12H2M22 12h-2M4.9 19.1l-1.4 1.4M20.5 3.5l-1.4 1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+    moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z',
+    auto: 'M12 3a9 9 0 1 0 0 18V3ZM12 3a9 9 0 0 1 0 18'
+  };
+  function icon(name) {
+    var ns = 'http://www.w3.org/2000/svg', svg = doc.createElementNS(ns, 'svg'), path = doc.createElementNS(ns, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
+    path.setAttribute('d', ICONS[name]); if (name === 'auto') path.setAttribute('fill', 'currentColor');
+    svg.appendChild(path); return svg;
+  }
+  function progressRing(done, total) {
+    var ns = 'http://www.w3.org/2000/svg', svg = doc.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('aria-hidden', 'true');
+    var r = 42, c = 2 * Math.PI * r, frac = total ? done / total : 0;
+    [['rgba(255,255,255,.25)', 1], ['#FFFFFF', frac]].forEach(function (x) {
+      var ci = doc.createElementNS(ns, 'circle');
+      ci.setAttribute('cx', '50'); ci.setAttribute('cy', '50'); ci.setAttribute('r', String(r)); ci.setAttribute('fill', 'none');
+      ci.setAttribute('stroke', x[0]); ci.setAttribute('stroke-width', '10'); ci.setAttribute('stroke-linecap', 'round');
+      ci.setAttribute('stroke-dasharray', (c * x[1]).toFixed(1) + ' ' + c.toFixed(1));
+      svg.appendChild(ci);
+    });
+    return h('div', { class: 'ring', role: 'img', 'aria-label': done + ' of ' + total + ' tasks done today' }, svg,
+      h('div', { class: 'num' }, done + '/' + total, h('small', {}, 'DONE')));
+  }
+  function confetti() {
+    if (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var cv = h('canvas', { class: 'confetti', 'aria-hidden': 'true' });
+    doc.body.appendChild(cv);
+    var W = cv.width = root.innerWidth, H = cv.height = root.innerHeight, g = cv.getContext('2d');
+    var cs = getComputedStyle(doc.documentElement), cols = PALETTE.map(function (v) { return cs.getPropertyValue(v).trim() || '#6D4AFF'; });
+    var ps = [];
+    for (var i = 0; i < 90; i++) ps.push({ x: W / 2 + (Math.random() - .5) * 80, y: H * 0.45, vx: (Math.random() - .5) * 13, vy: -Math.random() * 13 - 4, r: Math.random() * 6 + 4, a: Math.random() * 6, va: (Math.random() - .5) * .4, c: cols[i % cols.length] });
+    var t0 = performance.now();
+    (function frame(t) {
+      var k = (t - t0) / 1000; g.clearRect(0, 0, W, H);
+      ps.forEach(function (p) { p.vy += 0.42; p.x += p.vx; p.y += p.vy; p.a += p.va; g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.globalAlpha = Math.max(0, 1 - k / 1.6); g.fillStyle = p.c; g.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); g.restore(); });
+      if (k < 1.6) requestAnimationFrame(frame); else cv.remove();
+    })(t0);
+  }
+  var CHEERS = ['Nice work!', 'Done and dusted.', 'One less thing. Well done!', 'You\u2019re on a roll!', 'Look at you go!', 'Ticked off. Breathe.', 'That\u2019s progress.'];
 
   // ---------- planning ----------
   function replan() {
@@ -94,7 +176,8 @@
         date: date, start: start, end: end
       };
       if (key.slice(0, 2) === 'o:') state.oneoffs.forEach(function (o) { if ('o:' + o.id === key) o.done = true; });
-    }, 'Nice work. Plan updated.');
+    }, CHEERS[Math.floor(Math.random() * CHEERS.length)]);
+    confetti();
   }
   function undo(key) {
     change(function () {
@@ -116,6 +199,7 @@
   function route() { var r = (root.location.hash || '#today').slice(1); return ['today', 'week', 'tasks', 'shifts', 'settings'].indexOf(r) >= 0 ? r : 'today'; }
 
   function render() {
+    applyTheme();
     var main = doc.getElementById('main');
     main.replaceChildren();
     doc.querySelectorAll('nav.tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + route() ? 'page' : 'false'); });
@@ -139,7 +223,7 @@
   function renderPrompts() {
     var box = h('div', { class: 'stack' });
     if (state.settings.sound && !Al.unlocked()) {
-      box.append(h('div', { class: 'banner' }, h('span', { text: 'Tap once to let ShiftRhythm play its switch-task chime.' }),
+      box.append(h('div', { class: 'banner', 'data-banner': 'sound' }, h('span', { text: 'Tap once to let ShiftRhythm play its switch-task chime.' }),
         h('button', { class: 'btn small primary', type: 'button', onclick: function () { Al.unlock(); Al.play('heads', state.settings); render(); } }, 'Turn on sound')));
     }
     if (Al.permission() === 'default') {
@@ -172,10 +256,12 @@
         acts.append(h('button', { class: 'btn small', type: 'button', onclick: function () { skip(b.key); } }, b.source === 'oneoff' ? 'Tomorrow' : 'Skip'));
       }
     }
-    return h('div', { class: cls },
+    var row = h('div', { class: cls },
       h('span', { class: 'time', text: timeTxt }),
-      h('div', {}, h('div', { class: 'title' }, b.kind === 'break' ? 'Break' : b.title, ' ', badges), sub.length ? h('div', { class: 'sub', text: sub.join(' · ') }) : null),
+      h('div', {}, h('div', { class: 'title' }, b.kind === 'task' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null, b.kind === 'break' ? 'Break' : b.title, ' ', badges), sub.length ? h('div', { class: 'sub', text: sub.join(' · ') }) : null),
       acts);
+    if (b.kind === 'task') tint(row, taskColor(b));
+    return row;
   }
 
   function renderToday() {
@@ -200,6 +286,24 @@
     }
 
     var quick = root.SR.capture.renderCapture();
+    var keys = {}, doneKeys = {};
+    blocks.forEach(function (b) { if (b.kind === 'task' && b.date === t) { keys[b.key] = 1; if (b.done) doneKeys[b.key] = 1; } });
+    var total = Object.keys(keys).length, doneCount = Object.keys(doneKeys).length;
+    var day0 = plan.days[0] || {}, kind = day0.kind || 'off';
+    var hr = new Date().getHours();
+    var hello = (hr < 5 ? 'Still up' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (state.settings.name ? ', ' + state.settings.name : '');
+    var shiftB = blocks.filter(function (b) { return b.kind === 'shift' && b.date === t; })[0];
+    var mood = kind === 'day' ? 'Day shift. You\u2019ve got this.' : kind === 'night' ? 'Night shift tonight. Rest first.' : kind === 'recovery' ? 'Recovery day. Go gently.' : total ? 'A free day, made for your own things.' : 'A free day. Enjoy it.';
+    var pills = [h('span', { class: 'pill', text: kind === 'recovery' ? 'Off · after shift' : SHIFT_LABEL[day0.type || 'off'] })];
+    if (shiftB) pills.push(h('span', { class: 'pill', text: shiftB.startTime + '–' + shiftB.endTime }));
+    if (day0.wake) pills.push(h('span', { class: 'pill', text: 'Up at ' + day0.wake }));
+    var st = streak();
+    if (st > 0) pills.push(h('span', { class: 'pill', text: st + '-day streak' }));
+    var hero = h('section', { class: 'hero ' + kind, 'aria-label': 'Today' },
+      h('div', { class: 'orb', 'aria-hidden': 'true' }), h('div', { class: 'stars', 'aria-hidden': 'true' }),
+      h('div', {}, h('div', { class: 'sub', text: dayLabel(t, { weekday: 'long', day: 'numeric', month: 'long' }) }), h('div', { class: 'hello', text: hello }), h('div', { class: 'sub', text: mood })),
+      progressRing(doneCount, total),
+      h('div', { class: 'pills' }, pills));
 
     var list = h('div', { class: 'timeline' });
     if (!blocks.length) list.append(h('div', { class: 'empty', text: 'Nothing planned today.' }));
@@ -214,7 +318,7 @@
 
     var side = h('div', { class: 'stack' }, nowCard, root.SR.capture.renderBriefing(), renderUnplaced(),
       h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, 'Recalculate')));
-    return h('div', { class: 'stack' }, quick, h('div', { class: 'grid2' }, timeline, side));
+    return h('div', { class: 'stack' }, hero, quick, h('div', { class: 'grid2' }, timeline, side));
   }
   function countdownText(min) {
     if (min < 0) min = 0;
@@ -238,14 +342,14 @@
     var grid = h('div', { class: 'week' });
     var t = todayIso();
     plan.days.forEach(function (d) {
-      var card = h('section', { class: 'card dayc' + (d.date === t ? ' today' : '') });
+      var card = h('section', { class: 'card dayc ' + d.kind + (d.date === t ? ' today' : '') }, h('div', { class: 'band', 'aria-hidden': 'true' }));
       card.append(h('div', { class: 'spread' }, h('strong', { text: dayLabel(d.date) }), h('span', { class: 'chip ' + d.type, text: d.kind === 'recovery' ? 'Off \u00b7 after shift' : SHORT[d.type] })));
       var items = plan.blocks.filter(function (b) { return b.date === d.date && b.kind !== 'break'; });
       if (!items.length) card.append(h('div', { class: 'empty', text: 'Nothing planned' }));
       items.forEach(function (b) {
-        card.append(h('div', { class: 'mini k-' + b.kind + (b.during ? ' during' : '') + (b.done ? ' done' : '') },
+        card.append(tint(h('div', { class: 'mini k-' + b.kind + (b.during ? ' during' : '') + (b.done ? ' done' : '') },
           h('span', { class: 't', text: b.startTime + '–' + b.endTime }),
-          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' ⚠' : '') })));
+          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' ⚠' : '') })), b.kind === 'task' ? taskColor(b) : 'var(--line)'));
       });
       card.append(h('div', { class: 'muted small', text: dur(d.taskMinutes) + ' of tasks' }));
       grid.append(card);
@@ -285,6 +389,7 @@
     if (!state.recurring.length) rec.append(h('div', { class: 'empty', text: 'No recurring tasks yet.' }));
     state.recurring.forEach(function (t) {
       rec.append(h('div', { class: 'item' + (t.active ? '' : ' paused') },
+        tint(h('span', { class: 'swatch', 'aria-hidden': 'true' }), colorVar(t.id)),
         h('div', { class: 'body' }, h('span', { class: 'title', text: t.title + (t.active ? '' : ' (paused)') }), h('span', { class: 'muted small', text: describeTask(t, false) })),
         h('div', { class: 'row' },
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(t, false); } }, 'Edit'),
@@ -554,6 +659,13 @@
 
     return h('div', { class: 'grid2' },
       h('div', { class: 'stack' },
+        h('section', { class: 'card' }, h('h2', { text: 'You' }),
+          h('div', { class: 'fields' },
+            h('label', { class: 'field' }, h('span', {}, 'Your first name'), h('input', { type: 'text', id: 'myName', value: S.name || '', placeholder: 'For your greeting', onchange: function (e) { var v = e.target.value.trim().slice(0, 40); change(function () { S.name = v; }); } })),
+            h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'Look'),
+              h('div', { class: 'seg', role: 'group', 'aria-label': 'Theme' }, [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(function (o) {
+                return h('button', { type: 'button', 'aria-pressed': String((S.theme || 'auto') === o[0]), onclick: function () { change(function () { S.theme = o[0]; }); } }, o[1]);
+              }))))),
         h('section', { class: 'card' }, h('h2', { text: 'Focus rhythm' }),
           h('p', { class: 'small muted', text: 'How long you can focus before a break. Every task is split into sessions of this length, with a break after each one.' }),
           rhythmPicker()),
@@ -580,6 +692,7 @@
           h('label', { class: 'field' }, h('span', {}, 'Week starts on'), weekStart),
           h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'Weekend days (for "weekends only" rules)'), weekendBox))),
       h('div', { class: 'stack' },
+        renderSyncCard(),
         h('section', { class: 'card' }, h('h2', { text: 'Alarms' }),
           h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'snd', checked: S.sound, onchange: function (e) { var v = e.target.checked; change(function () { S.sound = v; }); } }), 'Play a chime when it is time to switch'),
           h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Chime'), chimeSel), h('label', { class: 'field' }, h('span', {}, 'Volume'), vol),
@@ -617,6 +730,74 @@
         h('section', { class: 'card' }, h('h2', { text: 'Privacy' }),
           h('p', { class: 'small', text: 'ShiftRhythm makes no network requests. There is no account, server, analytics or tracking. The page blocks all outside connections, so even a bug cannot send your data anywhere.' }),
           h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { state.setupDone = false; ui.wizardStep = 0; save(); render(); } }, 'Run setup again'), reset))));
+  }
+
+  // ---------- sync settings ----------
+  function syncStatusText() {
+    var i = root.SR.sync.info(), st = i.status;
+    if (!i.connected) return 'Not set up on this device.';
+    if (st.state === 'syncing') return 'Syncing\u2026';
+    if (st.state === 'locked') return st.message || 'Locked. Enter your passphrase.';
+    if (st.state === 'error' || st.state === 'offline') return st.message;
+    if (st.lastSync) { var m = Math.round((Date.now() - st.lastSync) / 60000); return 'Synced ' + (m < 1 ? 'just now' : m + ' min ago') + (i.dirty ? ' \u00b7 changes waiting' : ''); }
+    return i.dirty ? 'Changes waiting to sync.' : 'Connected.';
+  }
+  function renderSyncCard() {
+    var card = h('section', { class: 'card', 'aria-labelledby': 'syncH' }, h('div', { class: 'spread' }, h('h2', { id: 'syncH', text: 'Sync your devices' }), h('span', { class: 'chip good', text: 'End-to-end encrypted' })));
+    if (root.claude && typeof root.claude.use === 'function') {
+      card.append(h('p', { class: 'small muted', text: 'Sync runs in the version you open from your GitHub Pages link or your computer. It can\u2019t run inside this preview, because the preview isn\u2019t allowed to contact GitHub.' }));
+      return card;
+    }
+    var i = root.SR.sync.info();
+    var stat = h('p', { class: 'small', id: 'syncStatus', role: 'status', text: syncStatusText() });
+    if (i.connected) {
+      card.append(h('p', { class: 'small muted', text: 'Saved to ' + i.owner + '/' + i.repo + ' as \u201c' + (i.device || 'this device') + '\u201d. Only ciphertext is stored there; your passphrase never leaves this device.' }), stat);
+      if (i.status.state === 'locked') {
+        var up = h('input', { type: 'password', id: 'syncUnlock', placeholder: 'Sync passphrase', autocomplete: 'current-password' });
+        card.append(up, h('button', { class: 'btn primary', type: 'button', onclick: function () { root.SR.sync.unlock(doc.getElementById('syncUnlock').value).then(function () { toast('Sync unlocked.'); render(); }, function (e) { toast(e.message); render(); }); } }, 'Unlock'));
+      }
+      var dis = h('button', { class: 'btn danger small', type: 'button', onclick: function () {
+        if (!dis.dataset.armed) { dis.dataset.armed = '1'; dis.textContent = 'Tap again to disconnect'; return; }
+        root.SR.sync.disconnect().then(function () { toast('This device no longer syncs. Your data here is untouched.'); render(); });
+      } }, 'Disconnect this device');
+      card.append(h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { root.SR.sync.syncNow('manual').then(function () { render(); }); } }, 'Sync now'), dis));
+      return card;
+    }
+    var f = {
+      owner: h('input', { type: 'text', id: 'syOwner', placeholder: 'e.g. tricia-ships-it', autocomplete: 'off', autocapitalize: 'off' }),
+      repo: h('input', { type: 'text', id: 'syRepo', value: 'shiftrhythm-data', autocomplete: 'off', autocapitalize: 'off' }),
+      token: h('input', { type: 'password', id: 'syToken', placeholder: 'github_pat_\u2026', autocomplete: 'off' }),
+      pass: h('input', { type: 'password', id: 'syPass', placeholder: 'A sentence only you know', autocomplete: 'new-password' }),
+      confirm: h('input', { type: 'password', id: 'syConfirm', placeholder: 'Type it again (first device only)', autocomplete: 'new-password' }),
+      device: h('input', { type: 'text', id: 'syDevice', value: /Mobi|Android|iPhone/i.test(root.navigator.userAgent) ? 'Phone' : 'Laptop' }),
+      remember: h('input', { type: 'checkbox', id: 'syRemember', checked: true })
+    };
+    var err = h('p', { class: 'small warn-text', role: 'alert' });
+    var go = h('button', { class: 'btn primary', type: 'button', onclick: function () {
+      err.textContent = ''; go.disabled = true; go.textContent = 'Connecting\u2026';
+      var v = function (id) { var el = doc.getElementById(id); return el ? el.value : ''; };
+      var rem = doc.getElementById('syRemember');
+      root.SR.sync.connect({ owner: v('syOwner'), repo: v('syRepo'), token: v('syToken'), pass: v('syPass'), confirm: v('syConfirm'), device: v('syDevice'), remember: rem ? rem.checked : true })
+        .then(function () { toast('Sync is on. Do the same on your other device.'); render(); },
+          function (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Connect and sync'; });
+    } }, 'Connect and sync');
+    card.append(
+      h('p', { class: 'small muted', text: 'Use the planner on your phone and laptop with the same data. It\u2019s encrypted on your device with your passphrase, then stored in a private GitHub repository of yours. GitHub, and anyone who got in there, would only see scrambled data.' }),
+      h('details', {}, h('summary', { class: 'small', text: 'Set it up (about 5 minutes, once)' }),
+        h('ol', { class: 'small setup' },
+          h('li', {}, 'On GitHub, create a new ', h('b', {}, 'private'), ' repository called ', h('b', {}, 'shiftrhythm-data'), '. Leave it empty.'),
+          h('li', {}, 'Create a fine-grained token: ', h('a', { href: 'https://github.com/settings/personal-access-tokens/new', target: '_blank', rel: 'noopener noreferrer' }, 'github.com/settings/personal-access-tokens/new'), '. Under Repository access choose ', h('b', {}, 'Only select repositories'), ' \u2192 shiftrhythm-data. Under Permissions \u2192 Repository permissions set ', h('b', {}, 'Contents: Read and write'), '. Nothing else.'),
+          h('li', {}, 'Pick a sync passphrase. Use the same one on every device. If you forget it, the synced copy can\u2019t be opened by anyone, including you, but each device keeps its own copy.'),
+          h('li', {}, 'Fill in the form below and connect. Then do the same on your other device (it will ask for the passphrase only).'))),
+      h('div', { class: 'fields' },
+        h('label', { class: 'field' }, h('span', {}, 'GitHub username'), f.owner),
+        h('label', { class: 'field' }, h('span', {}, 'Private repository'), f.repo),
+        h('label', { class: 'field' }, h('span', {}, 'This device\u2019s name'), f.device)),
+      h('label', { class: 'field' }, h('span', {}, 'Access token'), f.token),
+      h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Sync passphrase'), f.pass), h('label', { class: 'field' }, h('span', {}, 'Confirm passphrase'), f.confirm)),
+      h('label', { class: 'check' }, f.remember, 'Remember the key on this device (so it syncs automatically)'),
+      err, h('div', { class: 'row' }, go));
+    return card;
   }
 
   function exportIcs() {
@@ -708,11 +889,12 @@
   }
   function showAlarm(b, txt) {
     closeAlarm();
-    var box = h('div', { class: 'alarm', role: 'alertdialog', 'aria-labelledby': 'alT' },
+    var box = h('div', { class: 'alarm k-' + b.kind, role: 'alertdialog', 'aria-labelledby': 'alT' },
       h('div', { class: 'big', id: 'alT', text: txt.title }), h('div', { text: txt.body }),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', type: 'button', onclick: closeAlarm }, 'Got it'),
         h('button', { class: 'btn', type: 'button', onclick: function () { closeAlarm(); setTimeout(function () { ring(b, false); }, 5 * 60000); toast('I’ll remind you again in 5 minutes.'); } }, 'Snooze 5 min')));
+    if (b.kind === 'task') tint(box, taskColor(b));
     doc.body.append(box);
     var again = 0;
     ui.alarm = { el: box, timer: setInterval(function () {
@@ -739,19 +921,32 @@
   // ---------- shared with capture.js ----------
   root.SR.app = {
     h: h, state: function () { return state; }, plan: function () { return plan; }, change: change, render: render, toast: toast,
-    todayIso: todayIso, nowMin: nowMin, dur: dur, dayLabel: dayLabel
+    todayIso: todayIso, nowMin: nowMin, dur: dur, dayLabel: dayLabel, colorVar: colorVar, tint: tint
   };
 
   // ---------- boot ----------
   function boot() {
     root.SR.capture.init();
+    if (root.SR.sync && !(root.claude && typeof root.claude.use === 'function')) {
+      root.SR.sync.init({
+        getState: function () { return state; },
+        setState: function (s) {
+          var keepSetup = state.setupDone;
+          state = St.clean(s); state.setupDone = state.setupDone || keepSetup;
+          St.save(state); replan(); render();
+        },
+        onStatus: function () { var el = doc.getElementById('syncStatus'); if (el) el.textContent = syncStatusText(); }
+      });
+    }
+    var tb = doc.getElementById('themeBtn');
+    if (tb) tb.addEventListener('click', cycleTheme);
     replan();
     render();
     root.addEventListener('hashchange', render);
-    doc.addEventListener('pointerdown', function (e) {
+    doc.addEventListener('pointerdown', function () {
       Al.unlock();
-      var onBanner = e.target.closest && e.target.closest('.banner');
-      if (state.setupDone && !onBanner && doc.querySelector('.banner') && !e.target.closest('input,select,textarea,.modal-bg')) setTimeout(render, 50);
+      // Sound is now allowed: drop the "turn on sound" banner without redrawing the page.
+      setTimeout(function () { if (Al.unlocked()) doc.querySelectorAll('[data-banner="sound"]').forEach(function (el) { el.remove(); }); }, 100);
     }, { once: true });
     doc.addEventListener('visibilitychange', function () { if (!doc.hidden) { tick(); render(); } });
     setInterval(tick, 1000 * 5);
