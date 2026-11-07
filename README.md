@@ -33,6 +33,7 @@ Everything runs on your own device. There's no account, server, analytics or net
 - **Alarms.** A chime (bells, marimba or bubbles, all synthesized in the browser) and a notification when a focus session, break, getting ready, travel, nap or bedtime starts. There's an optional heads-up a few minutes before tasks, plus snooze.
 - **Send to phone calendar.** Exports the plan as an `.ics` file with alarms, so your phone's calendar can remind you even when ShiftRhythm is closed.
 - **Encrypted sync between your devices.** Your phone and laptop share the same plan through a private GitHub repository of your own. Everything is encrypted on the device with your passphrase (AES-GCM 256), so GitHub only stores scrambled data. The token you create can only touch that one repository. Ticks and new tasks from both devices are merged, and nothing you finished is lost.
+- **Streaks, coins and freezes.** A day counts when you finish more than half of its tasks. It earns a coin, or two if you finish everything. Count your days in a row, collect bonus coins at 7, 14, 30, 60 and 100 days, and when a day slips, 3 coins freeze it automatically so your streak survives. Frozen days get a snowflake on your two-week tracker.
 - **Colourful light and dark themes.** The day's colours follow your shift: sunrise for day shifts, twilight for nights, fresh greens for off days. There's a progress ring, a streak counter and a little confetti when you finish something. Switch between Auto, Light and Dark from the top bar.
 - **Backups.** Save your data to a file, optionally encrypted with a passphrase (AES-GCM 256, PBKDF2-SHA-256), and restore it on another device.
 - **Works offline** and can be installed as an app (PWA).
@@ -109,6 +110,7 @@ js/scheduler.js       planning engine (pure, testable in Node)
 js/smart.js           understands typed/spoken tasks and breaks projects into steps (local rules)
 js/capture.js         capture panel, projects, daily briefing, voice typing, roster import
 js/sync.js            end-to-end encrypted sync via a private GitHub repository
+js/rewards.js         streaks, coins and streak freezes
 js/store.js           local storage, validation, encrypted backups
 js/alarm.js           chimes (Web Audio) and notifications
 js/ics.js             calendar export

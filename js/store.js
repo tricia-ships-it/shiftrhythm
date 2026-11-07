@@ -74,6 +74,18 @@
     if (!raw || typeof raw !== 'object') return s;
     s.setupDone = !!raw.setupDone;
     s.updatedAt = num(raw.updatedAt, 0, 9e15, 0);
+    var rw = raw.rewards;
+    if (rw && typeof rw === 'object' && ISO.test(rw.start || '')) {
+      var days = {}, snap = {};
+      Object.keys(rw.days || {}).slice(-500).forEach(function (d) {
+        var x = rw.days[d]; if (!ISO.test(d) || !x) return;
+        days[d] = { s: oneOf(x.s, ['win', 'perfect', 'rest', 'frozen', 'missed'], 'rest'), p: num(x.p, 0, 500, 0), n: num(x.n, 0, 500, 0), c: num(x.c, -100, 100, 0) };
+      });
+      Object.keys(rw.snap || {}).slice(-30).forEach(function (d) {
+        if (ISO.test(d) && Array.isArray(rw.snap[d])) snap[d] = rw.snap[d].filter(function (k) { return typeof k === 'string' && k.length < 120; }).slice(0, 200);
+      });
+      s.rewards = { start: rw.start, coins: num(rw.coins, 0, 100000, 0), through: ISO.test(rw.through || '') ? rw.through : rw.start, days: days, snap: snap, auto: rw.auto !== false, best: num(rw.best, 0, 100000, 0) };
+    }
     var D = root.SR.scheduler.DEFAULT_SETTINGS, r = raw.settings || {};
     var st = s.settings;
     ['commuteMin', 'prepMin', 'napMin', 'handoverMin', 'shiftEndBufferMin', 'focusMin', 'breakMin', 'capOffDay', 'capShiftDay', 'capRecoveryDay', 'headsUpMin'].forEach(function (k) {

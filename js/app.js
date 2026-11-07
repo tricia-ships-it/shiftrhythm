@@ -4,7 +4,7 @@
  */
 (function (root) {
   'use strict';
-  var Sch = root.SR.scheduler, St = root.SR.store, Al = root.SR.alarm, Ics = root.SR.ics;
+  var Sch = root.SR.scheduler, St = root.SR.store, Al = root.SR.alarm, Ics = root.SR.ics, Rw = root.SR.rewards;
   var doc = root.document;
 
   var state = St.load();
@@ -71,14 +71,6 @@
   }
   function taskColor(b) { return colorVar(b.project || b.taskId || b.key || b.title); }
   function tint(el, c) { el.style.setProperty('--c', c); return el; }
-  function streak() {
-    var days = {};
-    Object.keys(state.log).forEach(function (k) { var L = state.log[k]; if (L.status === 'done' && L.date) days[L.date] = true; });
-    var d = todayIso(), n = 0;
-    if (!days[d]) d = Sch.addDays(d, -1);
-    while (days[d]) { n++; d = Sch.addDays(d, -1); }
-    return n;
-  }
   var themeSetByApp = false;
   function applyTheme() {
     var t = state.settings.theme || 'auto', el = doc.documentElement;
@@ -141,11 +133,29 @@
   var CHEERS = ['Nice work!', 'Done and dusted.', 'One less thing. Well done!', 'You\u2019re on a roll!', 'Look at you go!', 'Ticked off. Breathe.', 'That\u2019s progress.'];
 
   // ---------- planning ----------
+  var pendingEvents = [];
   function replan() {
     var t = todayIso();
     St.prune(state, t);
     plan = Sch.buildPlan(state, { today: t, nowMin: nowMin() });
     planDay = t;
+    if (state.setupDone) {
+      var before = state.rewards ? state.rewards.through : null;
+      var ev = Rw.evaluate(state, t);
+      Rw.snapshot(state, plan, t);
+      if (ev.length || (state.rewards && state.rewards.through !== before)) { pendingEvents = pendingEvents.concat(ev); save(); }
+      else St.save(state);
+    }
+  }
+  function flushEvents() {
+    var ev = pendingEvents; pendingEvents = [];
+    var frozen = ev.filter(function (e) { return e.type === 'frozen'; }), missed = ev.filter(function (e) { return e.type === 'missed'; });
+    var msgs = [];
+    if (frozen.length) msgs.push('\u2744\ufe0f ' + (frozen.length === 1 ? dayLabel(frozen[0].date) + ' was' : frozen.length + ' days were') + ' frozen with your coins. Your streak is safe.');
+    if (missed.length) msgs.push(missed.length === 1 ? 'Your streak reset on ' + dayLabel(missed[0].date) + '. Today is a fresh start.' : 'Your streak reset after ' + missed.length + ' quiet days. Today is a fresh start.');
+    ev.forEach(function (e) { if (e.type === 'milestone') msgs.push('\ud83d\udd25 ' + e.streak + ' days in a row! +' + e.coins + ' bonus coins.'); });
+    msgs.forEach(function (m, i) { setTimeout(function () { toast(m); }, 300 + i * 2800); });
+    if (ev.some(function (e) { return e.type === 'milestone'; })) setTimeout(confetti, 300);
   }
   function change(mutator, msg) {
     mutator();
@@ -161,6 +171,7 @@
   function instanceBlocks(key) { return plan.blocks.filter(function (b) { return b.key === key && !b.done; }); }
 
   function markDone(key) {
+    var beforeR = Rw.status(state, plan, todayIso());
     var parts = instanceBlocks(key);
     var first = parts[0], last = parts[parts.length - 1];
     var oneoff = key.slice(0, 2) === 'o:' ? state.oneoffs.filter(function (o) { return 'o:' + o.id === key; })[0] : null;
@@ -176,8 +187,11 @@
         date: date, start: start, end: end
       };
       if (key.slice(0, 2) === 'o:') state.oneoffs.forEach(function (o) { if ('o:' + o.id === key) o.done = true; });
-    }, CHEERS[Math.floor(Math.random() * CHEERS.length)]);
-    confetti();
+    }, null);
+    var after = Rw.status(state, plan, todayIso());
+    if (!beforeR.todayCoins && after.todayCoins) { toast('\ud83e\ude99 Today\u2019s coin earned! Your streak is now ' + after.streak + '.'); confetti(); setTimeout(confetti, 450); }
+    else if (beforeR.todayCoins === 1 && after.todayCoins === 2) { toast('\ud83c\udf1f Perfect day! Everything done. +2 coins.'); confetti(); setTimeout(confetti, 450); }
+    else { toast(CHEERS[Math.floor(Math.random() * CHEERS.length)] + (after.today.need > 0 ? ' ' + after.today.need + ' more for today\u2019s coin.' : '')); confetti(); }
   }
   function undo(key) {
     change(function () {
@@ -297,8 +311,9 @@
     var pills = [h('span', { class: 'pill', text: kind === 'recovery' ? 'Off · after shift' : SHIFT_LABEL[day0.type || 'off'] })];
     if (shiftB) pills.push(h('span', { class: 'pill', text: shiftB.startTime + '–' + shiftB.endTime }));
     if (day0.wake) pills.push(h('span', { class: 'pill', text: 'Up at ' + day0.wake }));
-    var st = streak();
-    if (st > 0) pills.push(h('span', { class: 'pill', text: st + '-day streak' }));
+    var rs = Rw.status(state, plan, t);
+    pills.push(h('span', { class: 'pill', text: '\ud83d\udd25 ' + rs.streak + '-day streak' }));
+    pills.push(h('span', { class: 'pill', text: '\ud83e\ude99 ' + rs.coinsWithToday + ' coin' + (rs.coinsWithToday === 1 ? '' : 's') }));
     var hero = h('section', { class: 'hero ' + kind, 'aria-label': 'Today' },
       h('div', { class: 'orb', 'aria-hidden': 'true' }), h('div', { class: 'stars', 'aria-hidden': 'true' }),
       h('div', {}, h('div', { class: 'sub', text: dayLabel(t, { weekday: 'long', day: 'numeric', month: 'long' }) }), h('div', { class: 'hello', text: hello }), h('div', { class: 'sub', text: mood })),
@@ -316,9 +331,40 @@
         h('span', { class: 'muted small', text: doneN + ' of ' + todayTasks.length + ' task blocks done' })),
       list);
 
-    var side = h('div', { class: 'stack' }, nowCard, root.SR.capture.renderBriefing(), renderUnplaced(),
+    var side = h('div', { class: 'stack' }, nowCard, renderStreakCard(rs), root.SR.capture.renderBriefing(), renderUnplaced(),
       h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated from now.'); } }, 'Recalculate')));
     return h('div', { class: 'stack' }, hero, quick, h('div', { class: 'grid2' }, timeline, side));
+  }
+  var DOT = { win: ['Counted', '\u2713'], perfect: ['Perfect', '\u2605'], frozen: ['Frozen', '\u2744'], missed: ['Missed', '\u00d7'], rest: ['Rest day', '\u2013'], none: ['Not tracked', ''], today: ['Today', ''] };
+  function renderStreakCard(rs) {
+    var t = rs.today;
+    var pct = t.planned ? Math.round(100 * t.done / t.planned) : 0;
+    var bar = h('i'); bar.style.width = pct + '%';
+    var mark = h('b', { class: 'mark', 'aria-hidden': 'true' }); mark.style.left = (t.planned ? Math.min(100, 100 * (Math.floor(t.planned / 2) + 1) / t.planned) : 50) + '%';
+    var line = t.status === 'rest' ? 'Nothing planned today: a rest day. Your streak is safe.'
+      : t.status === 'perfect' ? 'Everything done today. \ud83c\udf1f 2 coins earned.'
+      : t.status === 'win' ? 'Today\u2019s coin is earned! Finish everything for a second one.'
+      : t.need + ' more task' + (t.need === 1 ? '' : 's') + ' to earn today\u2019s coin (' + t.done + ' of ' + t.planned + ' done).';
+    var dots = h('div', { class: 'dots', role: 'list', 'aria-label': 'Last two weeks' });
+    rs.history.forEach(function (x) {
+      dots.append(h('div', { class: 'dotday s-' + x.s, role: 'listitem', title: dayLabel(x.date) + ': ' + DOT[x.s][0], 'aria-label': dayLabel(x.date) + ': ' + DOT[x.s][0] },
+        h('span', { class: 'sym', text: DOT[x.s][1] }), h('span', { class: 'lbl', text: dayLabel(x.date, { weekday: 'narrow' }) })));
+    });
+    return h('section', { class: 'card streak-card', 'aria-labelledby': 'stkH' },
+      h('div', { class: 'spread' }, h('h3', { id: 'stkH', text: 'Your streak' }), h('span', { class: 'small muted', text: 'Best: ' + rs.best })),
+      h('div', { class: 'stk-nums' },
+        h('div', { class: 'stk' }, h('span', { class: 'emoji', 'aria-hidden': 'true', text: '\ud83d\udd25' }), h('b', { text: String(rs.streak) }), h('span', { class: 'small muted', text: 'days in a row' })),
+        h('div', { class: 'stk' }, h('span', { class: 'emoji', 'aria-hidden': 'true', text: '\ud83e\ude99' }), h('b', { text: String(rs.coinsWithToday) }), h('span', { class: 'small muted', text: 'coins' })),
+        h('div', { class: 'stk' }, h('span', { class: 'emoji', 'aria-hidden': 'true', text: '\u2744\ufe0f' }), h('b', { text: String(Math.floor(rs.coins / rs.freezeCost)) }), h('span', { class: 'small muted', text: 'freezes ready' }))),
+      t.status !== 'rest' ? h('div', { class: 'goal' }, h('div', { class: 'bar' }, bar), mark) : null,
+      h('p', { class: 'small', text: line }),
+      dots,
+      h('details', {}, h('summary', { class: 'small', text: 'How it works' }),
+        h('ul', { class: 'small rules' },
+          h('li', { text: 'Finish more than half of a day\u2019s tasks and the day counts: 1 coin, or 2 if you finish everything.' }),
+          h('li', { text: 'Days with nothing planned are rest days. They don\u2019t break your streak.' }),
+          h('li', { text: 'If a day doesn\u2019t count, ' + rs.freezeCost + ' coins freeze it automatically and your streak lives on.' + (rs.auto ? '' : ' (Turned off in Settings.)') }),
+          h('li', { text: 'Bonus coins at 7, 14, 30, 60 and 100 days in a row.' }))));
   }
   function countdownText(min) {
     if (min < 0) min = 0;
@@ -666,6 +712,9 @@
               h('div', { class: 'seg', role: 'group', 'aria-label': 'Theme' }, [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(function (o) {
                 return h('button', { type: 'button', 'aria-pressed': String((S.theme || 'auto') === o[0]), onclick: function () { change(function () { S.theme = o[0]; }); } }, o[1]);
               }))))),
+        h('section', { class: 'card' }, h('h2', { text: 'Streaks and coins' }),
+          h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'autoFreeze', checked: !state.rewards || state.rewards.auto !== false, onchange: function (e) { var v = e.target.checked; change(function () { Rw.ensure(state, todayIso()).auto = v; }, v ? 'Coins will freeze missed days automatically.' : 'Automatic freezes are off.'); } }),
+            'Spend ' + Rw.FREEZE_COST + ' coins to freeze a day automatically when I miss it')),
         h('section', { class: 'card' }, h('h2', { text: 'Focus rhythm' }),
           h('p', { class: 'small muted', text: 'How long you can focus before a break. Every task is split into sessions of this length, with a break after each one.' }),
           rhythmPicker()),
@@ -906,7 +955,7 @@
 
   function tick() {
     if (!plan) return;
-    if (todayIso() !== planDay) { replan(); render(); }
+    if (todayIso() !== planDay) { replan(); render(); flushEvents(); }
     var now = nowAbsPrecise();
     var hu = state.settings.headsUpMin;
     plan.blocks.forEach(function (b) {

@@ -3,10 +3,10 @@
  * It never fetches anything from other sites.
  */
 'use strict';
-var CACHE = 'shiftrhythm-v3';
+var CACHE = 'shiftrhythm-v4';
 var FILES = [
   './', './index.html', './manifest.webmanifest', './css/app.css', './icons/icon.svg',
-  './js/scheduler.js', './js/smart.js', './js/capture.js', './js/sync.js', './js/store.js', './js/alarm.js', './js/ics.js', './js/app.js'
+  './js/scheduler.js', './js/smart.js', './js/rewards.js', './js/capture.js', './js/sync.js', './js/store.js', './js/alarm.js', './js/ics.js', './js/app.js'
 ];
 
 self.addEventListener('install', function (e) {

@@ -281,3 +281,25 @@ canvas.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; 
 }
 .setup { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .setup a { color: var(--accent); overflow-wrap: anywhere; }
+
+/* streaks and coins */
+.streak-card { background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(135deg, #FFB547, #FF6B57, #E2489B) border-box; border: 2px solid transparent; }
+.stk-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stk { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 6px; border-radius: 14px; background: var(--surface2); text-align: center; }
+.stk .emoji { font-size: 1.35rem; line-height: 1.2; }
+.stk b { font-size: 1.6rem; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.goal { position: relative; padding-top: 4px; }
+.goal .bar { height: 10px; }
+.goal .bar > i { background: linear-gradient(90deg, #FFB547, #FF6B57); }
+.goal .mark { position: absolute; top: 0; width: 3px; height: 18px; border-radius: 2px; background: var(--ink); transform: translateX(-1px); opacity: .55; }
+.dots { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+.dotday { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.dotday .sym { width: 100%; aspect-ratio: 1; max-width: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 0.72rem; font-weight: 900; background: var(--hover); color: var(--muted); }
+.dotday .lbl { font-size: 0.62rem; color: var(--muted); font-weight: 700; }
+.dotday.s-win .sym { background: var(--good); color: #fff; }
+.dotday.s-perfect .sym { background: linear-gradient(135deg, #FFB547, #FF6B57); color: #fff; }
+.dotday.s-frozen .sym { background: linear-gradient(135deg, #7DD3FC, #60A5FA); color: #fff; }
+.dotday.s-missed .sym { background: var(--danger-soft); color: var(--danger); }
+.dotday.s-rest .sym { background: var(--surface2); border: 1.5px dashed var(--line); }
+.dotday.s-today .sym { background: transparent; border: 2px solid var(--accent); }
+.rules { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
