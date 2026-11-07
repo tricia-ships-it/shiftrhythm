@@ -199,7 +199,25 @@
         }
       }
     });
-    var hard = structure.filter(function (b) { return b.kind === 'shift' || b.kind === 'commute' || b.kind === 'prep'; });
+    // 1b. Fixed-time life areas (classes, a part-time job, rehearsals): blocked out every week like a shift.
+    var roles = (state.roles || []).filter(function (r) { return r && r.active !== false && r.name && r.id; });
+    var roleById = {};
+    roles.forEach(function (r) { roleById[r.id] = r; });
+    function isFixedRole(id) { return !!(id && roleById[id] && roleById[id].type === 'fixed'); }
+    roles.filter(function (r) { return r.type === 'fixed' && hm(r.start) != null && hm(r.end) != null; }).forEach(function (r) {
+      dates.forEach(function (d) {
+        if ((r.days || []).indexOf(weekday(d)) < 0 || (r.skip || []).indexOf(d) >= 0 || !eligible(r, d)) return;
+        var s = abs(d, hm(r.start)), e = abs(d, hm(r.end));
+        if (e <= s) e += DAY;
+        var c = Math.max(0, Math.round(Number(r.commuteMin) || 0));
+        structure.push({ s: s, e: e, kind: 'commit', title: r.name, role: r.id, travel: c });
+        if (c) {
+          structure.push({ s: s - c, e: s, kind: 'commute', title: 'Travel to ' + r.name, role: r.id });
+          structure.push({ s: e, e: e + c, kind: 'commute', title: 'Travel home', role: r.id });
+        }
+      });
+    });
+    var hard = structure.filter(function (b) { return b.kind === 'shift' || b.kind === 'commute' || b.kind === 'prep' || b.kind === 'commit'; });
     var wakeAt = {}; // date -> minute you get up (start of the day)
     dates.forEach(function (d) {
       if (typeOf(d) === 'night') return; // working through this night
@@ -208,6 +226,9 @@
       if (typeOf(nx) === 'day') wake = abs(nx, hm(S.shifts.day.start)) - S.commuteMin - S.prepMin;
       else if (shiftsMode && typeOf(d) === 'day') wake = abs(nx, hm(S.wakeAfterDayShift));
       else wake = abs(nx, hm(S.wakeTime));
+      structure.forEach(function (b) { // up in time for an early commitment
+        if (b.kind === 'commit' && dateOfAbs(b.s) === nx) wake = Math.min(wake, b.s - (b.travel || 0) - S.prepMin);
+      });
       var bt = hm(S.bedtime);
       var bed = abs(d, bt) + (bt < 12 * 60 ? DAY : 0);     // a 00:30 bedtime belongs to the next morning
       var s = Math.min(bed, wake - S.sleepMin), e = wake;
@@ -227,7 +248,7 @@
     structure = structure.filter(function (b) { return b.kind !== 'sleep'; }).concat(merged);
 
     // 2. Free time per day (outside shifts) and quiet time inside shifts.
-    var free = {}, work = {}, load = {};
+    var free = {}, work = {}, load = {}, roleWork = {};
     horizon.forEach(function (d) {
       var w = [{ s: abs(d, 0), e: abs(d, DAY) }];
       structure.forEach(function (b) { w = subtract(w, b.s, b.e); });
@@ -235,13 +256,17 @@
       structure.forEach(function (b) {
         if (b.kind === 'shift' && dateOfAbs(b.s) === d) ww.push({ s: b.s + S.handoverMin, e: b.e - S.shiftEndBufferMin });
       });
+      var rw = {};
+      structure.forEach(function (b) { if (b.kind === 'commit' && dateOfAbs(b.s) === d) (rw[b.role] = rw[b.role] || []).push({ s: b.s, e: b.e }); });
       if (nowAbs != null && d === today) {
         var cut = Math.ceil(nowAbs / 5) * 5;
         w = subtract(w, -Infinity, cut);
         ww = subtract(ww, -Infinity, cut);
+        Object.keys(rw).forEach(function (k) { rw[k] = subtract(rw[k], -Infinity, cut); });
       }
       free[d] = w.filter(function (x) { return x.e - x.s >= 10; });
       work[d] = ww.filter(function (x) { return x.e - x.s >= 10; });
+      roleWork[d] = rw;
       load[d] = 0;
     });
 
@@ -255,11 +280,12 @@
       if (s == null || e == null) return;
       var as = abs(L.date, s), ae = abs(L.date, e);
       if (ae < as) ae += DAY; else if (ae === as) ae = as + 5;
-      doneBlocks.push({ s: as, e: ae, kind: 'task', title: L.title || 'Task', key: key, taskId: L.taskId, done: true, during: L.when === 'during' });
+      doneBlocks.push({ s: as, e: ae, kind: 'task', title: L.title || 'Task', key: key, taskId: L.taskId, done: true, during: L.when === 'during', role: L.role || '' });
       if (free[L.date]) {
         // finished work keeps its slot, so nothing new is planned on top of it
         free[L.date] = subtract(free[L.date], as, ae);
         work[L.date] = subtract(work[L.date], as, ae);
+        Object.keys(roleWork[L.date] || {}).forEach(function (k) { roleWork[L.date][k] = subtract(roleWork[L.date][k], as, ae); });
         if (L.when !== 'during') load[L.date] += (ae - as);
       }
     });
@@ -273,7 +299,10 @@
       var rule = k === 'recovery' ? (al.recovery || al.off || 'yes') : (al[t] || 'yes');
       if (rule === 'no') return false;
       if (rule === 'weekend' && S.weekendDays.indexOf(weekday(d)) < 0) return false;
-      if (task.when === 'during' && t === 'off') return false;
+      if (task.when === 'during') {
+        if (isFixedRole(task.role)) { if (!(roleWork[d] && roleWork[d][task.role] && roleWork[d][task.role].length)) return false; }
+        else if (t === 'off') return false;
+      }
       if (Array.isArray(task.weekdays) && task.weekdays.length && task.weekdays.indexOf(weekday(d)) < 0) return false;
       return true;
     }
@@ -287,7 +316,7 @@
     var instances = [], unplaced = [];
     function inst(task, key, candidates, extra) {
       return Object.assign({
-        key: key, taskId: task.id, title: task.title, source: extra.source, order: extra.order || 0,
+        key: key, taskId: task.id, title: task.title, source: extra.source, order: extra.order || 0, role: task.role || '',
         duration: Math.max(5, Math.round(Number(task.durationMin) || 30)),
         when: task.when || 'outside',
         timeOfDay: task.timeOfDay || 'any',
@@ -445,17 +474,24 @@
       if (be > e) { free[d] = subtract(free[d], e, be); taskBlocks.push({ s: e, e: be, kind: 'break', title: 'Break' }); }
     });
 
-    instances.forEach(function (it) {
+    function getPool(d, pool) { return pool === 'out' ? free[d] : pool === 'work' ? work[d] : ((roleWork[d] || {})[pool.slice(2)] || []); }
+    function setPool(d, pool, w) {
+      if (pool === 'out') free[d] = w; else if (pool === 'work') work[d] = w;
+      else { roleWork[d] = roleWork[d] || {}; roleWork[d][pool.slice(2)] = w; }
+    }
+    instances.forEach(placeInstance);
+    function placeInstance(it) {
       if (it.placed) return;
       var reason = 'No free time on the allowed days.';
       var clash = null;
       for (var ci = 0; ci < it.candidates.length; ci++) {
         var d = it.candidates[ci];
         if (!free[d]) continue;
-        var pools = it.when === 'during' ? ['work'] : it.when === 'either' ? ['out', 'work'] : ['out'];
+        var inside = isFixedRole(it.role) ? 'r:' + it.role : 'work';
+        var pools = it.when === 'during' ? [inside] : it.when === 'either' ? ['out', inside] : ['out'];
         for (var pi = 0; pi < pools.length; pi++) {
           var pool = pools[pi];
-          var windows = pool === 'work' ? work[d] : free[d];
+          var windows = getPool(d, pool);
           var cap = capFor(d);
           if (pool === 'out' && load[d] + it.duration > cap) { reason = 'Daily limit for personal tasks reached on the allowed days.'; continue; }
 
@@ -485,20 +521,49 @@
       }
       if (clash) {
         // The user chose this exact time, so keep it and flag the clash.
-        var cw = clash.pool === 'work' ? work[clash.d] : free[clash.d];
+        var cw = getPool(clash.d, clash.pool);
         commit(it, clash.d, clash.pool, [{ s: clash.fs, e: clash.fe, bs: clash.fe, be: clash.fe }], subtract(cw, clash.fs, clash.fe), true);
         return;
       }
       unplaced.push({ key: it.key, taskId: it.taskId, title: it.title, reason: reason });
+    }
+
+    // Flexible areas ("about 6 hours a week"): top up whatever the area's own tasks don't already cover.
+    var weeksH = [];
+    horizon.forEach(function (d) { var ws = weekStart(d, S.weekStartsOn); if (weeksH.indexOf(ws) < 0) weeksH.push(ws); });
+    roles.filter(function (r) { return r.type === 'flexible' && Number(r.weeklyHours) > 0; }).forEach(function (r, order) {
+      weeksH.forEach(function (ws) {
+        var we = addDays(ws, 6), a0 = abs(ws, 0), a1 = abs(we, DAY), have = 0;
+        taskBlocks.concat(doneBlocks).forEach(function (b) { if (b.kind === 'task' && b.role === r.id && b.s >= a0 && b.s < a1) have += b.e - b.s; });
+        Object.keys(log).forEach(function (k) {
+          var L = log[k];
+          if (L && L.status === 'done' && L.role === r.id && L.date >= ws && L.date < from) { var s1 = hm(L.start), e1 = hm(L.end); if (s1 != null && e1 != null) have += Math.max(5, e1 - s1); }
+        });
+        var left = Math.round(Number(r.weeklyHours) * 60) - have;
+        if (left < 15) return;
+        var session = Math.max(30, Math.min(Number(r.session) || 90, S.maxSession));
+        var usable = [];
+        for (var j = 0; j < 7; j++) { var d = addDays(ws, j); if (horizon.indexOf(d) >= 0 && eligible(r, d)) usable.push(d); }
+        var n = Math.ceil(left / session), k = 0;
+        for (var i = 0; i < n; i++) {
+          var dur = Math.min(session, left - i * session);
+          if (dur < 15) break;
+          var key; do { key = 'role:' + r.id + '@W' + ws + '#' + (k++); } while (log[key]);
+          if (!usable.length) { unplaced.push({ key: key, taskId: 'role:' + r.id, title: r.name + ' time', reason: 'No allowed days left this week.' }); continue; }
+          var target = usable[Math.min(usable.length - 1, Math.floor((i + 0.5) * usable.length / n))];
+          placeInstance(inst({ id: 'role:' + r.id, title: r.name + ' time', durationMin: dur, when: 'outside', role: r.id, priority: 3, timeOfDay: r.timeOfDay || 'any' },
+            key, byDistance(usable, target), { source: 'area', period: ws, periodEnd: we, order: order }));
+        }
+      });
     });
 
     function commit(it, d, pool, placed, windows, conflict) {
-      if (pool === 'work') work[d] = windows; else free[d] = windows;
+      setPool(d, pool, windows);
       if (pool === 'out') load[d] += it.duration;
       placed.forEach(function (p, n) {
         taskBlocks.push({
           s: p.s, e: p.e, kind: 'task', title: it.title, key: it.key, taskId: it.taskId, source: it.source,
-          part: placed.length > 1 ? (n + 1) + '/' + placed.length : '', during: pool === 'work', project: it.project || '',
+          part: placed.length > 1 ? (n + 1) + '/' + placed.length : '', during: pool !== 'out', project: it.project || '', role: it.role || '',
           conflict: conflict, overdue: !!it.overdue
         });
         if (p.be > p.bs) taskBlocks.push({ s: p.bs, e: p.be, kind: 'break', title: 'Break' });

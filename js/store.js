@@ -16,6 +16,7 @@
       shifts: {},
       recurring: [],
       oneoffs: [],
+      roles: [],
       log: {}
     };
   }
@@ -49,7 +50,8 @@
       keepWhole: !!t.keepWhole,
       priority: num(t.priority, 1, 3, 2),
       allow: allow(t.allow),
-      notes: str(t.notes, 500)
+      notes: str(t.notes, 500),
+      role: str(t.role, 40).replace(/[^a-zA-Z0-9_-]/g, '')
     };
     if (!out.title) return null;
     out.weekdays = Array.isArray(t.weekdays) ? t.weekdays.map(Number).filter(function (x, i, a) { return x >= 0 && x <= 6 && a.indexOf(x) === i; }) : [];
@@ -68,6 +70,26 @@
       out.active = t.active !== false;
     }
     return out;
+  }
+  function cleanRole(r) {
+    if (!r || typeof r !== 'object') return null;
+    var out = {
+      id: str(r.id, 40).replace(/[^a-zA-Z0-9_-]/g, '') || uid(),
+      name: str(r.name, 40).trim(),
+      type: oneOf(r.type, ['fixed', 'flexible'], 'flexible'),
+      persona: str(r.persona, 20).replace(/[^a-z]/g, ''),
+      days: Array.isArray(r.days) ? r.days.map(Number).filter(function (x, i, a) { return x >= 0 && x <= 6 && a.indexOf(x) === i; }) : [],
+      start: HM.test(r.start || '') ? r.start : '09:00',
+      end: HM.test(r.end || '') ? r.end : '12:00',
+      commuteMin: num(r.commuteMin, 0, 240, 0),
+      weeklyHours: num(r.weeklyHours, 0, 80, 0),
+      session: num(r.session, 30, 240, 90),
+      allow: allow(r.allow),
+      skip: Array.isArray(r.skip) ? r.skip.filter(function (d) { return ISO.test(d); }).slice(-200) : [],
+      active: r.active !== false,
+      keywords: str(r.keywords, 120)
+    };
+    return out.name ? out : null;
   }
   function clean(raw) {
     var s = blank();
@@ -114,6 +136,8 @@
     Object.keys(raw.shifts || {}).forEach(function (d) {
       if (ISO.test(d) && ['day', 'night', 'off'].indexOf(raw.shifts[d]) >= 0) s.shifts[d] = raw.shifts[d];
     });
+    s.roles = (Array.isArray(raw.roles) ? raw.roles : []).map(cleanRole).filter(Boolean).slice(0, 24);
+    st.personas = Array.isArray(r.personas) ? r.personas.filter(function (x) { return typeof x === 'string' && /^[a-z]{2,12}$/.test(x); }).slice(0, 20) : [];
     s.recurring = (Array.isArray(raw.recurring) ? raw.recurring : []).map(function (t) { return cleanTask(t, false); }).filter(Boolean).slice(0, 300);
     s.oneoffs = (Array.isArray(raw.oneoffs) ? raw.oneoffs : []).map(function (t) { return cleanTask(t, true); }).filter(Boolean).slice(0, 2000);
     Object.keys(raw.log || {}).slice(0, 20000).forEach(function (k) {
@@ -124,7 +148,7 @@
         date: ISO.test(L.date || '') ? L.date : '',
         start: HM.test(L.start || '') ? L.start : '',
         end: HM.test(L.end || '') ? L.end : '',
-        title: str(L.title, 120), taskId: str(L.taskId, 40), when: oneOf(L.when, ['outside', 'during', 'either'], 'outside'),
+        title: str(L.title, 120), taskId: str(L.taskId, 46), when: oneOf(L.when, ['outside', 'during', 'either'], 'outside'), role: str(L.role, 40),
         at: num(L.at, 0, 9e15, 0)
       };
     });
@@ -183,5 +207,5 @@
   }
 
   root.SR = root.SR || {};
-  root.SR.store = { load: load, save: save, blank: blank, clean: clean, cleanTask: cleanTask, uid: uid, prune: prune, exportBackup: exportBackup, importBackup: importBackup, KEY: KEY };
+  root.SR.store = { cleanRole: cleanRole, load: load, save: save, blank: blank, clean: clean, cleanTask: cleanTask, uid: uid, prune: prune, exportBackup: exportBackup, importBackup: importBackup, KEY: KEY };
 })(this);

@@ -59,7 +59,7 @@
 
   function toProposal(p) {
     var pr = {
-      id: St.uid(), kind: p.recurrence ? 'recurring' : p.isProject ? 'project' : 'task',
+      role: root.SR.areas.detect(p.text), id: St.uid(), kind: p.recurrence ? 'recurring' : p.isProject ? 'project' : 'task',
       title: p.title, minutes: p.isProject ? p.totalMin : p.durationMin, due: p.due, date: p.date, fixedTime: p.fixedTime,
       when: p.when, priority: p.priority, type: p.type, typeLabel: p.typeLabel, recurrence: p.recurrence, guessed: p.guessed
     };
@@ -83,7 +83,7 @@
     return pr.steps.map(function (s, i) {
       return St.cleanTask({
         id: St.uid(), title: s.title + ' \u00b7 ' + shortTitle(pr.title), durationMin: s.minutes, after: s.after, due: s.due,
-        deadline: pr.due, project: pid, projectTitle: pr.title, step: i, when: pr.when, priority: pr.priority,
+        deadline: pr.due, project: pid, projectTitle: pr.title, step: i, when: pr.when, priority: pr.priority, role: pr.role || '',
         allow: pr.when === 'during' ? { off: 'no', day: 'yes', night: 'yes' } : undefined
       }, true);
     });
@@ -127,11 +127,15 @@
     return b ? { date: b.date, time: b.startTime } : null;
   }
   function singleTask(pr) {
-    return St.cleanTask({ id: St.uid(), title: pr.title, durationMin: pr.minutes, date: pr.date, due: pr.due, fixedTime: pr.fixedTime, when: pr.when, priority: pr.priority,
+    return St.cleanTask({ id: St.uid(), title: pr.title, durationMin: pr.minutes, date: pr.date, due: pr.due, fixedTime: pr.fixedTime, when: pr.when, priority: pr.priority, role: pr.role || '', keepWhole: !!pr.fixedTime,
       allow: pr.when === 'during' ? { off: 'no', day: 'yes', night: 'yes' } : undefined }, true);
   }
 
   function field(label, input) { return h('label', { class: 'field' }, h('span', {}, label), input); }
+  function areaSelect(pr, onchange) {
+    return h('select', { 'aria-label': 'Area of life', onchange: function (e) { pr.role = e.target.value; onchange(); } },
+      root.SR.areas.areaOptions().map(function (o) { return h('option', { value: o[0], selected: (pr.role || '') === o[0] }, o[1]); }));
+  }
   function whenSelect(pr, onchange) {
     return h('select', { onchange: function (e) { pr.when = e.target.value; onchange(); } },
       h('option', { value: 'outside', selected: pr.when === 'outside' }, 'Personal time'),
@@ -151,7 +155,7 @@
       box.append(
         h('div', { class: 'spread' }, h('span', { class: 'chip work', text: 'Project \u00b7 ' + pr.typeLabel }), h('button', { class: 'btn link', type: 'button', onclick: function () { remove(pr); } }, 'Discard')),
         title,
-        h('div', { class: 'fields' }, field('Total time (hours)' + (pr.guessed && pr.guessed.duration ? ', estimated' : ''), hours), field('Deadline', due), field('Where', whenSelect(pr, redo))),
+        h('div', { class: 'fields' }, field('Total time (hours)' + (pr.guessed && pr.guessed.duration ? ', estimated' : ''), hours), field('Deadline', due), field('Area', areaSelect(pr, redo)), field('Where', whenSelect(pr, redo))),
         h('p', { class: 'small muted', text: pr.steps.length + ' steps, finishing by ' + A().dayLabel(pr.finishBy) + ' to leave some slack. Edit anything; times update as you go.' }));
       var list = h('div', { class: 'steps-list' });
       pr.steps.forEach(function (s, i) {
@@ -190,7 +194,7 @@
       box.append(
         h('div', { class: 'spread' }, h('span', { class: 'chip off', text: 'Repeats' + wd }), h('button', { class: 'btn link', type: 'button', onclick: function () { remove(pr); } }, 'Discard')),
         title,
-        h('div', { class: 'fields' }, field('Times', times), field('Every', per), field('Minutes each', mins), field('Where', whenSelect(pr, function () {}))),
+        h('div', { class: 'fields' }, field('Times', times), field('Every', per), field('Minutes each', mins), field('Area', areaSelect(pr, function () {})), field('Where', whenSelect(pr, function () {}))),
         h('p', { class: 'small muted', text: 'You can set which days it\u2019s allowed on later, under Tasks.' }),
         h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { addRecurring(pr); } }, 'Add as recurring task')));
     } else {
@@ -200,7 +204,7 @@
       box.append(
         h('div', { class: 'spread' }, h('span', { class: 'chip', text: 'Task' + (pr.priority === 1 ? ' \u00b7 urgent' : '') }), h('button', { class: 'btn link', type: 'button', onclick: function () { remove(pr); } }, 'Discard')),
         title,
-        h('div', { class: 'fields' }, field('Minutes', m2), field(pr.due && !pr.date ? 'Due by' : 'Day', dd), field('At (optional)', tm), field('Where', whenSelect(pr, redo))),
+        h('div', { class: 'fields' }, field('Minutes', m2), field(pr.due && !pr.date ? 'Due by' : 'Day', dd), field('At (optional)', tm), field('Area', areaSelect(pr, redo)), field('Where', whenSelect(pr, redo))),
         h('p', { class: 'small ' + (pr.check ? 'ok' : 'warn-text'), text: pr.check ? 'Will go in ' + placementText(pr.check) + '.' : 'No free slot in the next two weeks. Try fewer minutes or another day.' }),
         h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: function () { addTask(pr); } }, 'Add task')));
     }
@@ -220,7 +224,7 @@
     if (!quiet) A().render();
   }
   function addRecurring(pr, quiet) {
-    var r = St.cleanTask({ id: St.uid(), title: pr.title, durationMin: pr.minutes, per: pr.recurrence.per, times: pr.recurrence.times, weekdays: pr.recurrence.weekdays, when: pr.when,
+    var r = St.cleanTask({ id: St.uid(), title: pr.title, durationMin: pr.minutes, per: pr.recurrence.per, times: pr.recurrence.times, weekdays: pr.recurrence.weekdays, when: pr.when, role: pr.role || '',
       allow: pr.when === 'during' ? { off: 'no', day: 'yes', night: 'yes' } : undefined }, false);
     A().change(function () { S().recurring.push(r); }, quiet ? null : 'Recurring task added.');
     ui.proposals = ui.proposals.filter(function (x) { return x !== pr; });
@@ -370,6 +374,7 @@
       var nap = todays.filter(function (b) { return b.kind === 'nap'; })[0];
       lines.push('Night shift tonight from ' + shift.startTime + '.' + (nap ? ' Nap ' + nap.startTime + '\u2013' + nap.endTime + ' first.' : ''));
     } else lines.push(A().dayTypeLabel('off') + '.');
+    todays.filter(function (b) { return b.kind === 'commit'; }).forEach(function (b) { lines.push(b.title + ' ' + b.startTime + '\u2013' + b.endTime + '.'); });
     if (recover && recover.title === 'Rest after night shift') lines.push('Home from last night\u2019s shift: keep it light, rest ' + recover.startTime + '\u2013' + recover.endTime + ', then a few active hours before bed.');
     else if (recover) lines.push('Sleeping until ' + recover.endTime + ' after last night\u2019s shift.');
     var dk = plan.days[0] && plan.days[0].kind;

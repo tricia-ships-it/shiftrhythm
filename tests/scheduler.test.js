@@ -242,3 +242,44 @@ test('free mode: every day is your own', () => {
   assert.equal(p.blocks.filter(b => b.title === 'Read').length, 7);
   assert.ok(p.days.every(d => d.kind === 'off'));
 });
+
+test('life areas: fixed-time area is blocked out with travel, and can be skipped', () => {
+  const roles = [{ id: 'choir', name: 'Choir rehearsal', type: 'fixed', days: [6], start: '15:00', end: '17:00', commuteMin: 30, allow: { off: 'yes', recovery: 'yes', day: 'no', night: 'no' } }];
+  const p = plan({ roles });
+  const c = p.blocks.find(b => b.kind === 'commit');
+  assert.equal(c.date, '2026-11-14'); assert.equal(c.startTime, '15:00'); assert.equal(c.title, 'Choir rehearsal');
+  assert.ok(p.blocks.find(b => b.kind === 'commute' && b.title === 'Travel to Choir rehearsal' && b.startTime === '14:30'));
+  const skipped = plan({ roles: [Object.assign({}, roles[0], { skip: ['2026-11-14'] })] });
+  assert.ok(!skipped.blocks.some(b => b.kind === 'commit'));
+});
+
+test('life areas: an early class moves wake-up earlier', () => {
+  const p = plan({ settings: { wakeTime: '08:00', prepMin: 60 }, roles: [{ id: 'cl', name: 'Classes', type: 'fixed', days: [6], start: '08:00', end: '10:00', commuteMin: 30 }] });
+  assert.equal(p.days.find(d => d.date === '2026-11-14').wake, '06:30');
+});
+
+test('life areas: tasks can happen during a fixed area', () => {
+  const p = plan({ roles: [{ id: 'pt', name: 'Part-time job', type: 'fixed', days: [5, 6], start: '10:00', end: '14:00' }],
+    recurring: [{ id: 'r', title: 'Client report', durationMin: 60, per: 'week', times: 1, when: 'during', role: 'pt' }] });
+  const t = p.blocks.find(b => b.title === 'Client report');
+  const block = p.blocks.find(b => b.kind === 'commit' && b.date === t.date);
+  assert.ok(t.s >= block.s && t.e <= block.e);
+  assert.equal(t.role, 'pt');
+});
+
+test('life areas: flexible area tops up to its weekly hours, counting its own tasks', () => {
+  const roles = [{ id: 'occ', name: 'Obaa Cyber Corps', type: 'flexible', weeklyHours: 4, session: 60, allow: { off: 'yes', recovery: 'yes', day: 'no', night: 'no' } }];
+  const p = plan({ roles, recurring: [{ id: 'shoot', title: 'Shoot content', durationMin: 90, per: 'week', times: 1, keepWhole: true, role: 'occ', allow: { off: 'yes', recovery: 'yes', day: 'no', night: 'no' } }] });
+  const area = p.blocks.filter(b => b.kind === 'task' && b.role === 'occ');
+  const total = area.reduce((a, b) => a + b.minutes, 0);
+  assert.equal(total, 240, '90 min of its own task + 150 min of general sessions');
+  assert.ok(p.blocks.some(b => b.title === 'Obaa Cyber Corps time'));
+  assert.ok(area.every(b => ['2026-11-13', '2026-11-14', '2026-11-15'].includes(b.date)), 'only on off days');
+});
+
+test('life areas: a finished area session is not planned again', () => {
+  const roles = [{ id: 'fr', name: 'Freelance', type: 'flexible', weeklyHours: 1, session: 60 }];
+  const log = { 'role:fr@W2026-11-09#0': { status: 'done', date: '2026-11-09', start: '20:00', end: '21:00', title: 'Freelance time', taskId: 'role:fr', role: 'fr' } };
+  const p = plan({ roles, log });
+  assert.equal(p.blocks.filter(b => b.title === 'Freelance time' && !b.done).length, 0);
+});

@@ -88,3 +88,11 @@ test('roster codes: sequence, packed and day pairs', () => {
   assert.equal(c.shifts['2026-12-04'], 'night'); assert.equal(c.shifts['2026-12-06'], 'off');
   assert.deepEqual(S.parseRoster('D Q N', '2026-12').unknown, ['q']);
 });
+
+test('time ranges book a fixed slot', () => {
+  const p = one('Acting gig on Saturday from 2pm to 6pm');
+  assert.equal(p.fixedTime, '14:00'); assert.equal(p.durationMin, 240); assert.equal(p.date, '2026-11-07');
+  assert.ok(!p.isProject);
+  assert.equal(one('Client call 14:00-15:30 tomorrow').durationMin, 90);
+  assert.equal(one('Rehearsal 2-6pm on Sunday').fixedTime, '14:00');
+});

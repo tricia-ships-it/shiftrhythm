@@ -103,6 +103,19 @@
     return { date: c.date, kind: dueWord ? 'due' : 'on', match: c.match, index: c.index };
   }
 
+  // "from 2pm to 6pm", "2-6pm", "14:00–18:00"
+  function findRange(text) {
+    var t = text.toLowerCase();
+    var m = /\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|\u2013|to|till|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/.exec(t);
+    if (!m || (!m[3] && !m[6] && !m[2] && !m[5])) return null;
+    function to24(h, ap, other) { h = +h; ap = ap || other; if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h; }
+    var h1 = to24(m[1], m[3], m[6]), h2 = to24(m[4], m[6], null);
+    if (!m[3] && m[6] === 'pm' && h1 + 12 <= h2 && +m[1] < 12) h1 = +m[1] + 12 <= h2 ? +m[1] + 12 : h1; // "2-6pm" -> 14-18
+    var s1 = h1 * 60 + (m[2] ? +m[2] : 0), s2 = h2 * 60 + (m[5] ? +m[5] : 0);
+    if (h1 > 23 || h2 > 23 || s2 <= s1) return null;
+    return { time: pad(h1) + ':' + pad(m[2] ? +m[2] : 0), minutes: s2 - s1, match: m[0] };
+  }
+
   function findTime(text) {
     var t = text.toLowerCase();
     var m = /\bat (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/.exec(t) || /\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/.exec(t) || /\b(\d{1,2})\s*(am|pm)\b/.exec(t);
@@ -186,7 +199,8 @@
     var t = raw.toLowerCase();
     var ws = settings.weekStartsOn == null ? 1 : settings.weekStartsOn;
     var rec = findRecurrence(raw);
-    var date = rec ? null : findDate(raw, today, ws), time = findTime(raw), dur = findDuration(raw);
+    var range = findRange(raw);
+    var date = rec ? null : findDate(raw, today, ws), time = range || findTime(raw), dur = range ? { minutes: range.minutes, matches: [] } : findDuration(raw);
     var type = detectType(raw);
     var when = WORK_WORDS.test(t) ? 'during' : 'outside';
     if (!WORK_WORDS.test(t) && !HOME_WORDS.test(t) && type && type.id === 'assessment') when = 'during';
@@ -302,7 +316,7 @@
     return { shifts: out, unknown: unknown.slice(0, 10) };
   }
 
-  var API = { parseRoster: parseRoster, parse: parse, parseOne: parseOne, breakdown: breakdown, findDate: findDate, findDuration: findDuration, findTime: findTime, TYPES: TYPES };
+  var API = { findRange: findRange, parseRoster: parseRoster, parse: parse, parseOne: parseOne, breakdown: breakdown, findDate: findDate, findDuration: findDuration, findTime: findTime, TYPES: TYPES };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else { root.SR = root.SR || {}; root.SR.smart = API; }
 })(this);

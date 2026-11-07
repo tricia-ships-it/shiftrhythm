@@ -82,7 +82,7 @@
     for (var i = 0; i < str.length; i++) x = (x * 31 + str.charCodeAt(i)) >>> 0;
     return 'var(' + PALETTE[x % PALETTE.length] + ')';
   }
-  function taskColor(b) { return colorVar(b.project || b.taskId || b.key || b.title); }
+  function taskColor(b) { return (b.role && root.SR.areas.areaColor(b.role)) || colorVar(b.project || b.taskId || b.key || b.title); }
   function tint(el, c) { el.style.setProperty('--c', c); return el; }
   var themeSetByApp = false;
   function applyTheme() {
@@ -196,7 +196,7 @@
     else { start = Sch.fmt(Math.max(0, nm - minutes)); end = Sch.fmt(Math.max(nm, 5)); } // finished early: log it as just done
     change(function () {
       state.log[key] = {
-        status: 'done', at: Date.now(), title: title, taskId: taskId, when: first && first.during ? 'during' : 'outside',
+        status: 'done', at: Date.now(), title: title, taskId: taskId, when: first && first.during ? 'during' : 'outside', role: first ? first.role || '' : (oneoff ? oneoff.role || '' : ''),
         date: date, start: start, end: end
       };
       if (key.slice(0, 2) === 'o:') state.oneoffs.forEach(function (o) { if ('o:' + o.id === key) o.done = true; });
@@ -269,6 +269,7 @@
     var timeTxt = b.startTime + '–' + b.endTime + (b.endDate !== b.date && b.kind !== 'break' ? ' +1' : '');
     var sub = [];
     if (b.kind === 'task') {
+      if (b.role) sub.push(root.SR.areas.areaName(b.role));
       sub.push(dur(b.minutes));
       if (b.part) sub.push('part ' + b.part);
       if (b.during) sub.push('during ' + workWord());
@@ -278,6 +279,11 @@
     if (b.conflict) badges.push(h('span', { class: 'chip warn', text: 'Clashes' }));
     if (b.overdue) badges.push(h('span', { class: 'chip warn', text: 'Overdue' }));
     var acts = h('div', { class: 'acts' });
+    if (b.kind === 'commit' && opts.actions && b.e > now) {
+      acts.append(h('button', { class: 'btn small', type: 'button', onclick: function () {
+        change(function () { var r = root.SR.areas.role(b.role); if (r && r.skip.indexOf(b.date) < 0) r.skip.push(b.date); }, b.title + ' skipped this time. Plan recalculated.');
+      } }, 'Not this time'));
+    }
     if (b.kind === 'task' && opts.actions) {
       if (b.done) acts.append(h('button', { class: 'btn small', type: 'button', onclick: function () { undo(b.key); } }, 'Undo'));
       else {
@@ -289,7 +295,7 @@
       h('span', { class: 'time', text: timeTxt }),
       h('div', {}, h('div', { class: 'title' }, b.kind === 'task' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null, b.kind === 'break' ? 'Break' : b.title, ' ', badges), sub.length ? h('div', { class: 'sub', text: sub.join(' · ') }) : null),
       acts);
-    if (b.kind === 'task') tint(row, taskColor(b));
+    if (b.kind === 'task' || b.kind === 'commit') tint(row, taskColor(b));
     return row;
   }
 
@@ -412,7 +418,7 @@
       items.forEach(function (b) {
         card.append(tint(h('div', { class: 'mini k-' + b.kind + (b.during ? ' during' : '') + (b.done ? ' done' : '') },
           h('span', { class: 't', text: b.startTime + '–' + b.endTime }),
-          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' ⚠' : '') })), b.kind === 'task' ? taskColor(b) : 'var(--line)'));
+          h('span', { text: b.title + (b.part ? ' (' + b.part + ')' : '') + (b.conflict ? ' ⚠' : '') })), b.kind === 'task' || b.kind === 'commit' ? taskColor(b) : 'var(--line)'));
       });
       card.append(h('div', { class: 'muted small', text: dur(d.taskMinutes) + ' of tasks' }));
       grid.append(card);
@@ -422,12 +428,13 @@
         h('div', { class: 'row' },
           h('button', { class: 'btn', type: 'button', onclick: function () { replan(); render(); toast('Plan recalculated.'); } }, 'Recalculate'),
           h('button', { class: 'btn', type: 'button', onclick: exportIcs }, 'Send to phone calendar (.ics)'))),
-      renderUnplaced(), grid);
+      root.SR.areas.renderHours(plan), renderUnplaced(), grid);
   }
 
   // ---------- tasks ----------
   function describeTask(t, oneoff) {
     var bits = [dur(t.durationMin)];
+    if (t.role) bits.unshift(root.SR.areas.areaName(t.role));
     if (!oneoff) bits.unshift(t.times + '× per ' + t.per);
     if (oneoff && t.date) bits.push('on ' + dayLabel(t.date));
     if (oneoff && t.due) bits.push('due ' + dayLabel(t.due));
@@ -453,7 +460,7 @@
     if (!state.recurring.length) rec.append(h('div', { class: 'empty', text: 'No recurring tasks yet.' }));
     state.recurring.forEach(function (t) {
       rec.append(h('div', { class: 'item' + (t.active ? '' : ' paused') },
-        tint(h('span', { class: 'swatch', 'aria-hidden': 'true' }), colorVar(t.id)),
+        tint(h('span', { class: 'swatch', 'aria-hidden': 'true' }), (t.role && root.SR.areas.areaColor(t.role)) || colorVar(t.id)),
         h('div', { class: 'body' }, h('span', { class: 'title', text: t.title + (t.active ? '' : ' (paused)') }), h('span', { class: 'muted small', text: describeTask(t, false) })),
         h('div', { class: 'row' },
           h('button', { class: 'btn small', type: 'button', onclick: function () { openEditor(t, false); } }, 'Edit'),
@@ -532,6 +539,7 @@
         f['allow_' + k] = h('select', { id: 'edAllow' + k }, opts.map(function (o) { return h('option', { value: o[0], selected: t.allow[k] === o[0] }, o[1]); })));
     }
     if (!t.allow.recovery) t.allow.recovery = t.allow.off;
+    f.role = h('select', { id: 'edRole' }, root.SR.areas.areaOptions().map(function (o) { return h('option', { value: o[0], selected: (t.role || '') === o[0] }, o[1]); }));
     f.tod = h('select', { id: 'edTod' }, [['any', 'Any time'], ['wake', 'First thing after waking (morning routine)'], ['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']].map(function (o) { return h('option', { value: o[0], selected: t.timeOfDay === o[0] }, o[1]); }));
     f.fixed = h('input', { type: 'time', id: 'edFixed', value: t.fixedTime || '' });
     f.whole = h('input', { type: 'checkbox', id: 'edWhole', checked: t.keepWhole });
@@ -548,6 +556,7 @@
       t.when = f.when.value;
       var pick = function (k, d) { return f['allow_' + k] ? f['allow_' + k].value : d; };
       t.allow = { off: pick('off', 'yes'), recovery: pick('recovery', pick('off', 'yes')), day: pick('day', t.allow.day || 'yes'), night: pick('night', t.allow.night || 'yes') };
+      t.role = f.role.value;
       t.timeOfDay = f.tod.value; t.fixedTime = f.fixed.value; t.keepWhole = f.whole.checked; t.priority = Number(f.prio.value);
       var clean = St.cleanTask(t, oneoff);
       if (t.when === 'during' && clean.allow.day === 'no' && clean.allow.night === 'no') { err.textContent = 'A task done during ' + workWord() + ' needs ' + workWord() + ' days allowed.'; return; }
@@ -574,7 +583,7 @@
         h('label', { class: 'field' }, h('span', {}, 'Minutes each time'), f.dur),
         oneoff ? [h('label', { class: 'field' }, h('span', {}, 'On a specific day'), f.date), h('label', { class: 'field' }, h('span', {}, 'Or due by'), f.due)]
           : [h('label', { class: 'field' }, h('span', {}, 'How many times'), f.times), h('label', { class: 'field' }, h('span', {}, 'Every'), f.per)]),
-      h('label', { class: 'field' }, h('span', {}, 'Where it happens'), f.when),
+      h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Area of life'), f.role), h('label', { class: 'field' }, h('span', {}, 'Where it happens'), f.when)),
       h('h3', { text: 'Allowed on' }),
       h('div', { class: 'fields' },
         ruleSel('off', shiftsMode() ? 'Normal off days' : mode() === 'regular' ? 'Days off' : 'Any day', [['yes', 'Yes'], ['no', 'No'], ['weekend', 'Weekends only']]),
@@ -666,7 +675,7 @@
         h('p', { class: 'small muted', text: shiftsMode() ? 'Tap a day to switch Off \u2192 Day \u2192 Night.' : 'Tap a day to switch between ' + workLabel().toLowerCase() + ' and a day off: holidays, leave, an extra day.' }),
         cal),
       h('div', { class: 'stack' },
-        h('section', { class: 'card', 'aria-labelledby': 'wkH' }, h('h2', { id: 'wkH', text: 'Your week' }), renderModePicker()),
+        h('section', { class: 'card', 'aria-labelledby': 'wkH' }, h('h2', { id: 'wkH', text: 'Your main schedule' }), renderModePicker()),
         shiftsMode() ? h('section', { class: 'card', 'aria-labelledby': 'rosH' }, h('h2', { id: 'rosH', text: 'Import this month\u2019s roster' }), root.SR.capture.renderRosterImport()) : null,
         shiftsMode() ? h('section', { class: 'card', 'aria-labelledby': 'patH' }, h('details', {}, h('summary', { id: 'patH', text: 'Or fill from a repeating rotation' }), renderPatternTool())) : null));
   }
@@ -687,6 +696,13 @@
       h('label', { class: 'field' }, h('span', {}, 'Night shift ends'), tf('nE', 'night', 'end')));
   }
 
+  function renderLifeCard() {
+    return h('section', { class: 'card', 'aria-labelledby': 'lifeH' },
+      h('h2', { id: 'lifeH', text: 'Your life' }),
+      h('h3', { text: 'What\u2019s part of your life?' }), root.SR.areas.renderPersonaPicker(),
+      h('h3', { text: 'Your main schedule' }), renderModePicker(),
+      h('h3', { text: 'Your areas' }), root.SR.areas.renderAreas());
+  }
   var MODES = [
     ['shifts', 'I work shifts', 'Rotating day and night shifts, a new roster each month.'],
     ['regular', 'I have a regular schedule', 'Work, school or classes on set days and hours, like Monday to Friday, 9 to 5.'],
@@ -716,7 +732,11 @@
       }));
       box.append(h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Call it'), label)),
         h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'On these days'), days), shiftHoursFields());
-    } else if (mode() === 'shifts') box.append(shiftHoursFields());
+    } else if (mode() === 'shifts') {
+      box.append(h('div', { class: 'fields' }, h('label', { class: 'field' }, h('span', {}, 'Where you work (optional)'),
+        h('input', { type: 'text', id: 'workLabelS', value: state.settings.workLabel === 'Work' ? '' : state.settings.workLabel, placeholder: 'e.g. PAIX', onchange: function (e) { var v = e.target.value.trim().slice(0, 30) || 'Work'; change(function () { state.settings.workLabel = v; }); } }))),
+        shiftHoursFields());
+    }
     else box.append(h('p', { class: 'small muted', text: 'No fixed commitments: every day is planned around your sleep and the things you want to do. If something regular comes up, like a part-time job or classes, switch to a regular schedule, or tap single days on the calendar.' }));
     box.append(h('div', { class: 'fields' }, mode() === 'free' ? null : numField('wCommute', 'Travel each way', 'commuteMin', 0, 240, 5, 'min')));
     return box;
@@ -796,7 +816,7 @@
             mode() === 'free' ? null : numField('capShift', 'Max task time, ' + workWord() + ' days', 'capShiftDay', 0, 480, 15, 'min')),
           h('div', { class: 'fields' }, numField('maxSession', 'Longest sitting for a project step', 'maxSession', 30, 480, 15, 'min')),
           mode() === 'free' ? null : h('p', { class: 'small muted', text: 'The ' + workWord() + '-day limit protects you after a long day. Tasks done during ' + workWord() + ' don\u2019t count towards it.' })),
-        h('section', { class: 'card' }, h('h2', { text: 'Your week' }), renderModePicker()),
+        renderLifeCard(),
         h('section', { class: 'card' }, h('h2', { text: 'Week' }),
           h('label', { class: 'field' }, h('span', {}, 'Week starts on'), weekStart),
           h('div', { class: 'field' }, h('span', { class: 'small muted' }, 'Weekend days (for "weekends only" rules)'), weekendBox))),
@@ -835,6 +855,7 @@
 
   // ---------- sync settings ----------
   function syncStatusText() {
+    if (!root.SR.sync) return '';
     var i = root.SR.sync.info(), st = i.status;
     if (!i.connected) return 'Not set up on this device.';
     if (st.state === 'syncing') return 'Syncing\u2026';
@@ -845,7 +866,7 @@
   }
   function renderSyncCard() {
     var card = h('section', { class: 'card', 'aria-labelledby': 'syncH' }, h('div', { class: 'spread' }, h('h2', { id: 'syncH', text: 'Sync your devices' }), h('span', { class: 'chip good', text: 'End-to-end encrypted' })));
-    if (root.claude && typeof root.claude.use === 'function') {
+    if ((root.claude && typeof root.claude.use === 'function') || !root.SR.sync) {
       card.append(h('p', { class: 'small muted', text: 'Sync runs in the version you open from your GitHub Pages link or your computer. It can\u2019t run inside this preview, because the preview isn\u2019t allowed to contact GitHub.' }));
       return card;
     }
@@ -923,7 +944,7 @@
 
   // ---------- first-run setup ----------
   function renderWizard() {
-    var steps = ['Welcome', 'Your week', 'Sleep and rhythm', 'Recurring tasks', 'Alarms'];
+    var steps = ['Welcome', 'Your life', 'Sleep and rhythm', 'Recurring tasks', 'Alarms'];
     var s = ui.wizardStep;
     var bar = h('div', { class: 'steps', 'aria-hidden': 'true' }, steps.map(function (_, i) { return h('i', { class: i <= s ? 'on' : '' }); }));
     function nav(canBack, nextLabel, onNext) {
@@ -940,12 +961,14 @@
         nav(false, 'Set up from scratch'),
         h('div', { class: 'proposal' },
           h('strong', { text: 'Already using ShiftRhythm on another device?' }),
-          inClaude ? null : h('details', {}, h('summary', { class: 'small', text: 'Sync from your other device (recommended)' }),
+          inClaude || !root.SR.sync ? null : h('details', {}, h('summary', { class: 'small', text: 'Sync from your other device (recommended)' }),
             h('p', { class: 'small muted', text: 'Use the same GitHub username, repository and passphrase as on your other device, with a token made for this device. Everything comes across: your calendar, tasks, streaks and coins.' }),
             renderSyncCard()),
           h('details', {}, h('summary', { class: 'small', text: 'Restore a backup file' }), renderRestore()))];
     } else if (s === 1) {
-      body = [h('h2', { text: 'What does your week look like?' }), renderModePicker(),
+      body = [h('h2', { text: 'What\u2019s part of your life?' }), root.SR.areas.renderPersonaPicker(),
+        h('h3', { text: 'Your main schedule' }), renderModePicker(),
+        (state.roles || []).length ? [h('h3', { text: 'Your areas' }), root.SR.areas.renderAreas()] : null,
         shiftsMode() ? [h('h3', { text: 'This month\u2019s roster' }), root.SR.capture.renderRosterImport(),
           h('details', {}, h('summary', { text: 'Or use a repeating rotation' }), renderPatternTool()),
           h('p', { class: 'small muted', text: 'Irregular rota? Skip this and tap days on the calendar later.' })] : null,
@@ -993,9 +1016,10 @@
     Object.keys(fired).forEach(function (k) { if (fired[k] < cutoff) delete fired[k]; });
     try { root.localStorage.setItem(FIRED_KEY, JSON.stringify(fired)); } catch (e) {}
   }
-  var TUNE = { task: 'focus', break: 'break', commute: 'travel', prep: 'focus', nap: 'sleep', sleep: 'sleep' };
+  var TUNE = { task: 'focus', break: 'break', commute: 'travel', prep: 'focus', nap: 'sleep', sleep: 'sleep', commit: 'focus' };
   function alarmText(b) {
     if (b.kind === 'task') return { title: 'Time for: ' + b.title + (b.part ? ' (' + b.part + ')' : ''), body: b.startTime + '–' + b.endTime + ' · ' + dur(b.minutes) + ' focus' };
+    if (b.kind === 'commit') return { title: 'Time for: ' + b.title, body: b.startTime + '\u2013' + b.endTime };
     if (b.kind === 'break') return { title: 'Break time', body: 'Step away for ' + dur(b.minutes) + '. Stretch, drink some water.' };
     if (b.kind === 'commute') return { title: b.title, body: 'Leave now · ' + b.startTime };
     if (b.kind === 'prep') return { title: 'Time to get up and get ready', body: 'Leave at ' + b.endTime + '.' };

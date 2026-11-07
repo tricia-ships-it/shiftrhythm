@@ -12,6 +12,11 @@ Everything runs on your own device. There's no account, server, analytics or net
 
 ## What it does
 
+- **Every hat you wear.** Pick what's part of your life: shift work, a full-time or part-time job, studies, freelancing, running an organisation, a community role, creative gigs, choir or faith group, family, job hunting, retirement. Each becomes an *area* with its own colour:
+  - **Fixed-time areas** (classes, a part-time job, rehearsals) are blocked out every week, with travel. Tap *Not this time* to skip one.
+  - **Flexible areas** ("about 6 hours a week" for your NGO or freelance work) get sessions in your free time. Tasks you add to the area count towards its hours.
+  - The Week view shows **hours by area**, against each area's target.
+
 - **Say it, it plans it.** Type or speak what's coming up, for example *"Plan the Builders Circle event by 28 Nov, about 8 hours. Call the venue tomorrow at 3pm. Gym 3 times a week."* ShiftRhythm works out each item: the deadline, how long it takes, whether it's a work task, whether it repeats, and how urgent it is.
 - **Automatic project breakdown.** A task with a deadline is broken into sensible steps for its kind of work (events, content, security assessments, writing, study, outreach). Each step gets its own window of days, finishing a little before the deadline, and is fitted around your shifts. You see where every step will land, and if it won't all fit, the smallest deadline that would work.
 - **Daily briefing.** Your shift, when to leave, recovery sleep, what's left today, how each project is going (on track or behind), and your weekly goals so far.
@@ -115,6 +120,7 @@ js/smart.js           understands typed/spoken tasks and breaks projects into st
 js/capture.js         capture panel, projects, daily briefing, voice typing, roster import
 js/sync.js            end-to-end encrypted sync via a private GitHub repository
 js/rewards.js         streaks, coins and streak freezes
+js/areas.js           life areas: personas, fixed and flexible areas, hours by area
 js/store.js           local storage, validation, encrypted backups
 js/alarm.js           chimes (Web Audio) and notifications
 js/ics.js             calendar export
